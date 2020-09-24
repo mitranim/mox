@@ -1,0 +1,414 @@
+(( # Literals ))
+
+10
+123.456
+123.456e789
+0o334544
+0x12313
+0b10010101
++10
++123.456
++123.456e789
++0o334544
++0x12313
++0b10010101
+-10
+-123.456
+-123.456e789
+-0o334544
+-0x12313
+-0b10010101
+
+'character'
+"double string"
+"double string with escapes \t \n"
+"
+double string multiline
+"
+`grave string`
+`grave string without escapes \t \n`
+`
+grave string multiline
+`
+
+true
+false
+nil (( Might ship without it ))
+
++ - * / % & ...
+
+arbitrary_ident
+arbitrary_ident.arbitrary_ident
+arbitrary_ident.arbitrary_ident.arbitrary_ident
+
+(( # Comments ))
+
+((
+Comments are enclosed in (( )) and always multiline. Nested comments are
+supported.
+
+Single-line comments must have leading and trailing spaces. This should be
+enforced by the formatter:
+
+  (( space before, space after ))
+
+Multiline comments must have leading and trailing newlines. There must be no
+indentation or any other noise before each line of the text. This should be
+enforced by the formatter:
+
+  ((
+  some_text
+  some_text
+  some_text
+  ))
+
+Comments may be used to generate documentation. Most likely following the Go,
+Rust, Swift convention that a comment immediately followed by a named definition
+serves as the documentation for that definition. Most likely following the Rust,
+Swift convention of using Markdown.
+
+The AST must include comments.
+
+If the language has an interpreted form with a REPL, comments might be used to
+generate help docs accessible in the REPL.
+))
+
+(( # General Structure ))
+
+((
+Everything is either a literal, an ident or operator, or a block enclosed in {}
+(braces). Braces are the only delimiter; () [] <> are not used.
+))
+
+a {
+  b { c d }
+  e {
+    f { g h }
+  }
+}
+
+((
+The only punctuation is {} and the dot accessor. There is no comma or semicolon.
+The language is whitespace-insensitive, but space must be used to separate
+literals, symbols, operators and so on:
+))
+
+{ a_b }
+
+{ a b }
+
+((
+A {}, when not preceded by an identifier, may be a block. A block is an
+expression whose result can be used like any other:
+))
+
+{ 10 20 }
+
+(( This is a function call with a single argument. ))
+fmt.println {
+  (( This block is an expression. ))
+  {
+    some_func{}
+    some_func{}
+    (( This will be printed. ))
+    return_result
+  }
+}
+
+((
+An identifier before a block "takes" the block as its "input". In case of
+functions, they take parameters. In case of macros and special syntactic forms,
+they take a chunk of AST.
+))
+
+(( # Naming Convention ))
+
+((
+Most identifiers use `snake_case`. Type names use `Capital_snake_case`.
+Constants use `UPPER_SNAKE_CASE`. Other case styles should be either forbidden
+by the compiler, or automatically changed by the formatter.
+))
+
+ident_snake_case
+Type_capital_snake_case
+CONSTANT_UPPER_SNAKE_CASE
+
+((
+Abbreviations are considered normal words, not uppercased. Mixing lower and
+upper case is not allowed.
+))
+
+json_encode
+json_decode
+Json_encoder
+Json_decoder
+
+(( # Calling ))
+
+((
+An identifier followed by braces may invoke a function, a macro, a special
+syntactic form, or a type conversion.
+))
+
+some_func { arg0 arg1 ... }
+some_ident.some_method { arg0 arg1 ... }
+some_macro { expressions }
+some_type { some_val }
+
+((
+Function calls, operator expressions, boolean expressions, everything uses the
+prefix notation:
+))
+
++ { one two }
+and { one or { two three } }
+
+((
+The dot property accessor is the only infix operator:
+))
+
+one.two.three
+
+(( # Function Definitions ))
+
+((
+`fn` has full type inference. Parameter and return types can't be specified. The
+function can optionally be named. A named function used as a statement, rather
+than as an expression, is added to the scope.
+))
+
+fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
+fn { sum { coll } coll.fold { 0 fn { { a b } + { a b } } } }
+
+fn {add{a b} +{a b}}}
+fn { add { a b } + { a b } } }
+
+((
+`func` has no type inference. Parameter and return types must be fully specified.
+The function can optionally be named. A named function used as a statement,
+rather than as an expression, is added to the scope.
+
+The return type must be specified after parameters, enclosed in `ret{...}`. This
+allows to disambiguate the return type from the expressions following it.
+))
+
+func{{a T b T} ret{T} +{a b}}
+
+func { { a T b T } ret { T } + { a b } }
+
+func {
+  add { a T b T } ret { T }
+  + { a b }
+}
+
+func {
+  opt_add { a Opt{T} b Opt{T} } ret { Opt{T} }
+  match {
+    when { a Opt{T} b Opt{T} } then Some { + { a b } }
+    else None
+  }
+}
+
+((
+The syntax for method definitions is still in flux and needs more careful
+consideration:
+))
+
+func {
+  some_method { self Some_type param0 Other_type } ret { Another_type }
+  self.other_method{}
+  self.other_method{}
+}
+
+func {
+  some_method { self ref{Some_type} param0 Other_type } ret { Another_type }
+  self.other_method{}
+  self.other_method{}
+}
+
+func {
+  Some_type.some_method { param0 Other_type } ret { Another_type }
+  self.other_method{}
+  self.other_method{}
+}
+
+func {
+  ref{Some_type}.some_method { param0 Other_type } ret { Another_type }
+  self.other_method{}
+  self.other_method{}
+}
+
+(( # Type Forms ))
+
+Some_type
+
+some_module.Some_type
+
+struct {
+  field0 type0
+  field1 type1
+}
+
+((
+Generic types specify their "parameter types" in {}.
+))
+
+tuple { Some_type Some_type Some_type }
+
+array { 16 byte }
+
+slice { byte }
+
+slice { slice { byte } }
+
+dict { string Some_type }
+
+dict { array { 16 byte } dict { string slice { byte } } }
+
+((
+Variant type / tagged union type.
+))
+
+variant {
+  Variant0 Some_type
+  Variant1 tuple { Some_type }
+}
+
+(( # Type Definitions ))
+
+((
+`type` defines a named type. It must begin with a type name, immediately
+followed by a type form.
+))
+
+type {
+  Parse_state struct {
+    string string
+    trail  int
+    cursor int
+    ast    Nodes
+  }
+}
+
+((
+A type can alias another named type. It will share the same underlying memory
+structure.
+))
+
+type {
+  Type_alias Some_type
+}
+
+((
+Generic types specify their parameters in {}.
+))
+
+type {
+  Opt{T} variant {
+    Some tuple{T}
+    None tuple{}
+  }
+}
+
+((
+Generic types can specify conditions for parameter types.
+))
+
+type {
+  Either{A B}
+  variant {
+    Ok A
+    Err B
+  }
+  where {
+    B { Error }
+  }
+}
+
+(( # Instantiating Types ))
+
+Some_slice { 10 20 30 }
+
+slice { int } { 10 20 30 }
+
+Some_dict {
+  "one" 10
+  "two" 20
+  "three" 30
+}
+
+Some_struct {
+  one 10
+  two 20
+  three 30
+}
+
+(( # Macros ))
+
+((
+The language supports macros. Macros are functions interpreted by the compiler.
+They take AST and return AST.
+
+Macros should have access to information about the scope surrounding the AST,
+as well as metadata about each expression, such as its type.
+
+Technically, macros might not be limited to just AST operations. There might be
+other interesting uses, for example involving IO.
+))
+
+((
+Convention: for compatibility with syntax highlighting and symbol indexing,
+name-definiting macros should always wrap one of the well-known name-definiting
+forms.
+))
+
+(( Bad ))
+special_fn { fn_name {} {} }
+
+(( Good ))
+special { fn { fn_name {} {} } }
+
+((
+Example of SQL generation with a macro. This supports argument substitution
+(default) and text interpolation (opt-in). Arguments are replaced with
+positional placeholders and added to the argument slice. The returned object
+contains text and arguments.
+))
+
+var { table_name "persons" }
+
+var { id random_uuid {} }
+
+sql_query {`
+  select col0, col1, col2
+  from ` text{table_name} `
+  where
+    id = ` id ` and
+    not is_deleted
+`}
+
+(( The type returned by `sql_query`. ))
+type {
+  Sql_query struct {
+    text string
+    args slice { any }
+  }
+}
+
+((
+Example of XML generation with a macro. Uses HTML tags to make the example
+easier to understand, even though HTML is not XML-compliant.
+
+In this example, {{ }} double braces are used for interpolating arbitrary
+expressions.
+))
+
+xml {
+  div {
+    { attr0 "value0" attr1 "value1" }
+    span { "text" }
+    "text"
+    {{ var0 }}
+    {{ str { var0 var1 var2 } }}
+  }
+}
