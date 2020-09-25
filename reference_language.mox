@@ -1,86 +1,14 @@
-(( # Literals ))
+(( # Level 1: see `reference_data_notation.mox`! ))
+
+(( # Level 2: Language ))
 
 ((
-Note on number literals. They must be parsed with unlimited precision. We could
-allow untyped numeric constants, like Go. We might also implement overloading
-literal syntax via constructor macros, which could be used for big integers or
-big floats.
+This level represents the syntax of a hypothetical language. The AST is defined
+in terms of the Level 1 data notation. It doesn't add anything that would
+require changing the parser.
 ))
 
-10
-123.456
-123.456e789
-0o334544
-0x12313
-0b10010101
-+10
-+123.456
-+123.456e789
-+0o334544
-+0x12313
-+0b10010101
--10
--123.456
--123.456e789
--0o334544
--0x12313
--0b10010101
-
-'character'
-"double string"
-"double string with escapes \t \n"
-"
-double string multiline
-"
-`grave string`
-`grave string without escapes \t \n`
-`
-grave string multiline
-`
-
-true
-false
-nil (( Might ship without it ))
-
-+ - * / % & ...
-
-arbitrary_ident
-arbitrary_ident.arbitrary_ident
-arbitrary_ident.arbitrary_ident.arbitrary_ident
-
-(( # Comments ))
-
-((
-Comments are enclosed in (( )) and always multiline. Nested comments are
-supported.
-
-Single-line comments must have leading and trailing spaces. This should be
-enforced by the formatter:
-
-  (( space before, space after ))
-
-Multiline comments must have leading and trailing newlines. There must be no
-indentation or any other noise before each line of the text. This should be
-enforced by the formatter:
-
-  ((
-  some_text
-  some_text
-  some_text
-  ))
-
-Comments may be used to generate documentation. Most likely following the Go,
-Rust, Swift convention that a comment immediately followed by a named definition
-serves as the documentation for that definition. Most likely following the Rust,
-Swift convention of using Markdown.
-
-The AST must include comments.
-
-If the language has an interpreted form with a REPL, comments might be used to
-generate help docs accessible in the REPL.
-))
-
-(( # General Structure ))
+(( ## General Structure ))
 
 ((
 Everything is either a literal, an ident or operator, or a block enclosed in {}
@@ -129,7 +57,7 @@ functions, they take parameters. In case of macros and special syntactic forms,
 they take a chunk of AST.
 ))
 
-(( # Naming Convention ))
+(( ## Naming Convention ))
 
 ((
 Most identifiers use `snake_case`. Type names use `Capital_snake_case`.
@@ -151,7 +79,7 @@ json_decode
 Json_encoder
 Json_decoder
 
-(( # Calling ))
+(( ## Calling ))
 
 ((
 An identifier followed by braces may invoke a function, a macro, a special
@@ -164,8 +92,8 @@ some_macro{expressions}
 some_type{some_val}
 
 ((
-Function calls, operator expressions, boolean expressions, everything uses the
-prefix notation:
+Function calls, operators, boolean expressions, everything uses the prefix
+notation with braces:
 ))
 
 +{one two}
@@ -178,7 +106,9 @@ The dot property accessor is the only infix operator:
 
 one.two.three
 
-(( # Function Definitions ))
+some_func{}.some_method{}.some_method{}.some_field
+
+(( ## Function Definitions ))
 
 ((
 `fn` has full type inference. Parameter and return types can't be specified. The
@@ -243,7 +173,7 @@ func{
   self.other_method{}
 }
 
-(( # Type Forms ))
+(( ## Type Forms ))
 
 Some_type
 
@@ -279,7 +209,7 @@ variant{
   Variant1 tuple{Some_type}
 }
 
-(( # Type Definitions ))
+(( ## Type Definitions ))
 
 ((
 `type` defines a named type. It must begin with a type name, immediately
@@ -337,7 +267,7 @@ type{Some_type struct{type string}}
 
 var{type "blah"}
 
-(( # Instantiating Types ))
+(( ## Instantiating Types ))
 
 Some_slice{10 20 30}
 
@@ -355,7 +285,7 @@ Some_struct{
   three 30
 }
 
-(( # Macros ))
+(( ## Macros ))
 
 ((
 The language supports macros. Macros are functions interpreted by the compiler.
@@ -425,12 +355,14 @@ xml{
   }
 }
 
-(( # Constructor Macros ))
+(( ## Constructor Macros ))
 
 ((
 It might be possible to allow "overloading" constructor syntax for user-defined
 types, by associating a macro with a type, which is automatically invoked for
-every literal value of that type found in source code.
+every literal value of that type found in source code. Untyped constants should
+also work, as they preserve the original literal as-is, without loss of
+information.
 
 Example use cases:
 
@@ -502,7 +434,7 @@ macro_literal_string{fn{
       quote{
         Rope_chunk{
           len unquote{Ast_int{chars.len}}
-          chars unquote{Ast_seq{chars}}
+          chars unquote{Ast_block{chars}}
         }
       }
     }}}

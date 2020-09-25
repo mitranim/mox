@@ -19,7 +19,7 @@ variables:
 
   char_escape: \\x\h{2}|\\u\h{4}|\\U\h{8}|\\[0-7]{3}|\\.
 
-  heading: '#+\s*[\w\s]*\w'
+  heading: '#+\s*.*\w'
 
 contexts:
   prototype:

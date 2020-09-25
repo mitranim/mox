@@ -1,0 +1,140 @@
+(( # Level 1: Data Notation ))
+
+((
+The first level of the syntax defines a "data notation": literal syntax for
+various primitive types and nestable block structure. This level is not aware
+of any language specifics, doesn't even have special constants such as `true`
+and `false`.
+
+Editors should implement a simplified syntax highlighter for the data notation,
+independent of any language or configuration defined in terms of it. This could
+be useful for future DSLs.
+
+The provided tooling must include a parser and a formatter.
+))
+
+(( ## Comments ))
+
+((
+Comments are enclosed in (( )) and always multiline. Nested comments are
+supported.
+
+Single-line comments must have leading and trailing spaces. This should be
+enforced by the formatter:
+
+  (( space before, space after ))
+
+Multiline comments must have leading and trailing newlines. There must be no
+indentation or any other noise before each line of the text. This should be
+enforced by the formatter:
+
+  ((
+  some_text
+  some_text
+  some_text
+  ))
+
+Comments may be used to generate documentation. Most likely following the Go,
+Rust, Swift convention that a comment immediately followed by a named definition
+serves as the documentation for that definition. Also, most likely following the
+Rust, Swift convention of using Markdown.
+
+If a language defined in terms of this notation has an interpreted form with a
+REPL, comments might be used to generate help docs accessible in the REPL.
+
+The parser for this data notation must preserve comments in the AST, and provide
+an option to drop them if desired. Preserving the comments is essential for a
+variety of use cases, such as reformatting code or editing configuration files.
+))
+
+(( ## Numbers ))
+
+10         (( Decimal integers. ))
+123.456    (( Decimal floats. ))
+0b10       (( Binary integers. ))
+0o123      (( Octal integers. ))
+0x123      (( Hex integers. ))
++10        (( Positives. ))
+-10        (( Negatives. ))
+'a'        (( Characters (Uni-code-points). ))
+
+(( ## Strings ))
+
+"
+double string: supports newlines and escapes: \t \n
+"
+
+`
+grave string: supports newlines, but not escapes: \t \n
+`
+
+(( ## Operators ))
+
+((
+Currently these are special-cased, but might be later unified with symbols, just
+like in Lisps.
+))
+
++ - * / % & ...
+
+(( ## Symbols ))
+
+(( None of these have any special meaning. ))
+arbitrary_ident
+true
+false
+
+(( ## Punctuation ))
+
+((
+Aside from blocks (see below), the only punctuation is the infix dot operator.
+It's allowed between any two forms, without any special meaning. A dot that's
+not between two non-dot, non-comment forms generates a parse error.
+))
+
+ident.ident
+
+{10}."20".ident
+
+(( ## Blocks ))
+
+((
+Sequences and blocks of code are enclosed in braces: {}. There are no other
+delimiters.
+))
+
+{}
+{{}}
+{{} {} {{}}}
+{10 "20"}
+{10 {"20"}}
+
+(( ## Serialization and JSON ))
+
+((
+This notation can represent arbitrary data. However, the base level is not
+directly interchangeable with JSON because it lacks dicts.
+
+We can represent arbitrary types by using the "call" convention with blocks.
+This allows a much richer set of types compared to JSON. In this sense, our
+notation is closer to XML than JSON.
+
+Limiting the extensions to `dict{}` creates a subset fully interchangeable with
+JSON.
+))
+
+dict{"key0" "value0" "key1" "value1" "key2" "value2"}
+
+set{"value0" "value1" "value2"}
+
+time{"1234-12-34T01:02:03Z"}
+
+html {
+  document {
+    {"attr0" "value0" "attr1" "value1"}
+    div {
+      {"attr0" "value0" "attr1" "value1"}
+      "hello world"
+    }
+  }
+}
