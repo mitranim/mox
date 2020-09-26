@@ -51,7 +51,6 @@ create_table { idents
   }
 }
 
-(( Ambiguity: `type` is incorrectly scoped as function call. ))
 create_unique_index { `` idents { person_id }   where { in { type { "facebook" "google" } } } }
 create_unique_index { `` idents { external_id } where { == { type "facebook" } } }
 create_unique_index { `` idents { external_id } where { == { type "google" } } }

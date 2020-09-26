@@ -148,7 +148,6 @@ contexts:
 
   match-idents:
     - include: match-keywords
-    - include: match-blank-idents
     - include: match-calls
     - include: match-other-idents
 
@@ -160,10 +159,6 @@ contexts:
     - include: match-func
     - include: match-type
 
-  match-blank-idents:
-    - match: \b_\b
-      scope: variable.language.blank.nox
-
   match-calls:
     - match: '{{ident}}(?={{noise}}\{)'
       scope: variable.function.nox
@@ -173,7 +168,7 @@ contexts:
       scope: variable.other.nox
 
   match-operators:
-    - match: '[~!@#$%^&*:<>.?/\\=+-]+'
+    - match: '[~!@#$%^&*:<>.?/\\|=+-]+'
       scope: keyword.operator.mox
 
   match-punctuation:

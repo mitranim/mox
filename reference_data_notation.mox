@@ -35,18 +35,18 @@ supported.
 By convention, single-line comments should have leading and trailing spaces.
 This should be enforced by the formatter:
 
-  (( space before, space after ))
+    (( space before, space after ))
 
 By convention, multiline comments should have leading and trailing newlines,
-with no indentation or any other noise before each line. The formatter should
-enforce leading and trailing newlines:
+with no unnecessary indentation or other noise before each line. The formatter
+should enforce leading and trailing newlines:
 
-  ((
-  some_text
-  some_text
-      markdown_indented_code_block
-  some_text
-  ))
+    ((
+    some_text
+    some_text
+        markdown_indented_code_block
+    some_text
+    ))
 
 Comments may be used to generate documentation. Most likely following the Go,
 Rust, Swift convention that a comment immediately followed by a named definition
@@ -56,9 +56,10 @@ Rust, Swift convention of using Markdown.
 If a language defined in terms of this notation has an interpreted form with a
 REPL, comments might be used to generate help docs accessible in the REPL.
 
-The parser for this data notation must preserve comments in the AST, and provide
-an option to drop them if desired. Preserving the comments is essential for a
-variety of use cases, such as reformatting code or editing configuration files.
+The parser for this data notation must preserve whitespace and comments in the
+AST, and provide an option to drop them if desired. Preserving whitespace and
+comments is essential for a variety of use cases, such as reformatting code or
+editing configuration files.
 ))
 
 (( ## Numbers ))
@@ -99,8 +100,8 @@ Any of these symbols, in any combination, are considered an operator. When not
 separated by a space, they combine into another, different, operator. Any
 combination, of any length, is allowed.
 ))
-~ ! @ # $ % ^ & * : < > . ? / \ = + -
-~! @# $% ^& *: <> .? /\ =+-
+~ ! @ # $ % ^ & * : < > . ? / \ | = + -
+~! @# $% ^& *: <> .? /\ |= +-
 
 ((
 Operators don't have to be separated from other forms by whitespace:

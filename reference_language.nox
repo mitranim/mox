@@ -11,8 +11,8 @@ require changing the parser.
 (( ## General Structure ))
 
 ((
-Everything is either a literal, an ident or operator, or a block enclosed in {}
-(braces). Braces are the only delimiter; () [] are not used.
+Everything is either a primitive literal, an ident or operator, or a block
+enclosed in {} (braces). Braces are the only delimiter; () [] are not used.
 ))
 
 ident{
@@ -64,6 +64,8 @@ macros and special syntactic forms, they take a chunk of AST.
 * Type names use `Capital_snake_case`.
 * Other identifiers use `snake_case`.
 
+To avoid ambiguity, constant names must be at least two characters long.
+
 Other case styles should be forbidden by the compiler and automatically changed
 by the formatter.
 ))
@@ -78,6 +80,12 @@ json_encode
 json_decode
 Json_encoder
 Json_decoder
+
+((
+Boolean variables, functions, struct fields should start with `is_`:
+))
+var{is_deleted true}
+fn{is_deleted{val} val.is_deleted}
 
 (( ## Calling ))
 
@@ -179,20 +187,19 @@ func{
 Neither `fn` nor `func` is a reserved keyword, as there are NO reserved
 keywords. They can be used for variables, functions, struct fields, and more.
 ))
-
-type{Some_type struct{fn any}}
-
 var{func func{{}}}
+type{Struct_with_func struct{func Func{}}}
 
-(( ## Type Forms ))
+(( ## Type Literals ))
 
 Some_type
 
 some_module.Some_type
 
+(( Anonymous struct type. ))
 struct{
-  field0 type0
-  field1 type1
+  field0 Type0
+  field1 Type1
 }
 
 ((
@@ -214,16 +221,16 @@ variant{
 }
 
 ((
-TODO: syntax for function types.
+Function type.
 ))
+Func{{Type0 Type1} ret{Type2}}
 
 (( ## Type Definitions ))
 
 ((
 `type` defines a named type. It must begin with a type name, immediately
-followed by a type form.
+followed by a type literal.
 ))
-
 type{
   Parse_state struct{
     string String
@@ -234,16 +241,15 @@ type{
 }
 
 ((
-A type can alias another named type. It will share the same underlying memory
-structure.
+The right hand side of a type definition can be any type, either anonymous or
+named. The defined type will have the same underlying memory structure, field
+names, and so on.
 ))
-
-type{Type_alias Some_type}
+type{Some_type Other_type}
 
 ((
 Generic types specify their parameters in {}.
 ))
-
 type{
   Opt{T} variant{
     Some Tuple{T}
@@ -254,7 +260,6 @@ type{
 ((
 Generic types can specify conditions for parameter types.
 ))
-
 type{
   Either{A B}
   variant{
@@ -270,10 +275,8 @@ type{
 `type` is not a reserved keyword, as there are NO reserved keywords. It can be
 used for variables, functions, struct fields, and more.
 ))
-
-type{Some_type struct{type String}}
-
 var{type "blah"}
+type{Some_type struct{type String}}
 
 (( ## Instantiating Types ))
 
@@ -308,7 +311,7 @@ other interesting uses, for example involving IO.
 
 ((
 Convention: for compatibility with syntax highlighting and symbol indexing,
-name-definiting macros should always wrap one of the well-known name-definiting
+name-defining macros should always wrap one of the well-known name-defining
 forms.
 ))
 
@@ -319,10 +322,10 @@ special_fn{fn_name{} {}}
 special{fn{fn_name{} {}}}
 
 ((
-Example of SQL generation with a macro. This supports argument substitution
-(default) and text interpolation (opt-in). Arguments are replaced with
-positional placeholders and added to the argument slice. The returned object
-contains text and arguments.
+Example SQL generation with a macro. This hypothetical `sql_query` macro
+supports argument substitution (default) and text interpolation (opt-in).
+Arguments are replaced with positional placeholders and added to the argument
+slice. The returned object contains text and arguments.
 ))
 
 var{table_name "persons"}
@@ -337,7 +340,7 @@ sql_query{`
     not is_deleted
 `}
 
-(( The type returned by `sql_query`. ))
+(( Type returned by `sql_query`. ))
 type{
   Sql_query struct{
     text String
@@ -346,7 +349,7 @@ type{
 }
 
 ((
-Example of generating HTML with a hypothetical `xml` macro. Uses {{ }} for
+Example HTML generation with a hypothetical `xml` macro. Uses {{ }} for
 interpolation. The macro could be defined to return an AST or print a string.
 ))
 xml{
@@ -362,10 +365,10 @@ xml{
         (( Text node ))
         "text"
 
-        (( Interpolation ))
+        (( Interpolation: variable ))
         {{var0}}
 
-        (( Interpolation ))
+        (( Interpolation: arbitry expression (function or macro) ))
         {{str{var0 var1 var2}}}
       }
     }
@@ -393,6 +396,7 @@ Example use cases:
     with higher precision than machine numbers.
 ))
 
+(( Example rope string type used below. ))
 type{
   Rope_string struct{
     chunks Slice{Rope_chunk}
@@ -401,7 +405,7 @@ type{
 
 type{
   Rope_chunk struct{
-    len Int
+    len   Int
     chars Array{1024 Char}
   }
 }
@@ -410,11 +414,10 @@ type{
 Example constructor macro for a rope string type. Overloads the string literal
 syntax for that type, converting it to a literal constructor AST.
 
-The macro is strongly typed, but the parameter and return types can be inferred.
+The macro is strongly typed, but its signature is inferred by the compiler.
 
-The input value of constructor macros varies by which literal they overload.
-When overloading a string literal, they take the string's literal content as the
-input.
+The input value of constructor macros varies by the literal type they overload.
+When overloading a string literal, they take the string's content as the input.
 
 The output value of constructor macros must be AST representing a literal
 constructor of that type, the part in {}, omitting the type identifier.

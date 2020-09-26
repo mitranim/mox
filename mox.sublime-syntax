@@ -129,7 +129,7 @@ contexts:
       scope: variable.other.mox
 
   match-operators:
-    - match: '[~!@#$%^&*:<>.?/\\=+-]+'
+    - match: '[~!@#$%^&*:<>.?/\\|=+-]+'
       scope: keyword.operator.mox
 
   match-punctuation:
