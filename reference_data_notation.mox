@@ -3,14 +3,27 @@
 ((
 The first level of the syntax defines a "data notation": literal syntax for
 various primitive types and nestable block structure. This level is not aware
-of any language specifics, doesn't even have special constants such as `true`
-and `false`.
+of any language specifics. It has NO RESERVED KEYWORDS or special constants such
+as `true` or `false`.
 
 Editors should implement a simplified syntax highlighter for the data notation,
 independent of any language or configuration defined in terms of it. This could
 be useful for future DSLs.
 
 The provided tooling must include a parser and a formatter.
+
+Minor note for later: the parser API should include an option to parse exactly
+one syntactic form out of the input, instead of the entire input; this could be
+useful for embedding this in some other syntax.
+
+The data notation is defined in terms of Unicode characters, independently of
+any text encoding. The input to the parser should be a sequence of code points,
+not bytes. For example, if the parser is implemented in Go, the input should be
+`[]rune`.
+
+This notation currently doesn't define a way to embed binary data. It's possible
+instead to use base64 strings (language-independent but requires special
+interpretation) or literal byte slice constructors (language-specific).
 ))
 
 (( ## Comments ))
@@ -19,18 +32,19 @@ The provided tooling must include a parser and a formatter.
 Comments are enclosed in (( )) and always multiline. Nested comments are
 supported.
 
-Single-line comments must have leading and trailing spaces. This should be
-enforced by the formatter:
+By convention, single-line comments should have leading and trailing spaces.
+This should be enforced by the formatter:
 
   (( space before, space after ))
 
-Multiline comments must have leading and trailing newlines. There must be no
-indentation or any other noise before each line of the text. This should be
-enforced by the formatter:
+By convention, multiline comments should have leading and trailing newlines,
+with no indentation or any other noise before each line. The formatter should
+enforce leading and trailing newlines:
 
   ((
   some_text
   some_text
+      markdown_indented_code_block
   some_text
   ))
 
@@ -49,14 +63,14 @@ variety of use cases, such as reformatting code or editing configuration files.
 
 (( ## Numbers ))
 
-10         (( Decimal integers. ))
-123.456    (( Decimal floats. ))
-0b10       (( Binary integers. ))
-0o123      (( Octal integers. ))
-0x123      (( Hex integers. ))
-+10        (( Positives. ))
--10        (( Negatives. ))
-'a'        (( Characters (Uni-code-points). ))
+10      (( Decimal integers. ))
+123.456 (( Decimal floats. ))
+0b10    (( Binary integers. ))
+0o123   (( Octal integers. ))
+0x123   (( Hex integers. ))
++10     (( Positives. ))
+-10     (( Negatives. ))
+'a'     (( Characters (Uni-code-points). ))
 
 (( ## Strings ))
 
@@ -68,39 +82,48 @@ double string: supports newlines and escapes: \t \n
 grave string: supports newlines, but not escapes: \t \n
 `
 
+(( ## Identifiers ))
+
+((
+Identifiers have C-like restrictions: only US ASCII Latin alphanumerics,
+starting with a letter. There are NO RESERVED KEYWORDS in this notation.
+
+None of these have any special meaning.
+))
+arbitrary_ident true false nil self
+
 (( ## Operators ))
 
 ((
-Currently these are special-cased, but might be later unified with symbols, just
-like in Lisps.
+Any of these symbols, in any combination, are considered an operator. When not
+separated by a space, they combine into another, different, operator. Any
+combination, of any length, is allowed.
 ))
-
-+ - * / % & ...
-
-(( ## Symbols ))
-
-(( None of these have any special meaning. ))
-arbitrary_ident
-true
-false
-
-(( ## Punctuation ))
+~ ! @ # $ % ^ & * : < > . ? / \ = + -
+~! @# $% ^& *: <> .? /\ =+-
 
 ((
-Aside from blocks (see below), the only punctuation is the infix dot operator.
-It's allowed between any two forms, without any special meaning. A dot that's
-not between two non-dot, non-comment forms generates a parse error.
+Operators don't have to be separated from other forms by whitespace:
 ))
+ident.ident.ident
+10+20
 
-ident.ident
-
-{10}."20".ident
+((
+This notation is biased towards prefix rather than infix. It doesn't define
+operator precedence and doesn't support parentheses for grouping, only braces.
+Therefore, DSL writers are advised to use operators in the prefix position, like
+functions:
+))
+!ident
++{10 20 30}
+<{10 20}
+>{30 40}
 
 (( ## Blocks ))
 
 ((
-Sequences and blocks of code are enclosed in braces: {}. There are no other
-delimiters.
+Sequences and blocks of code are enclosed in braces: {}. No other delimiters are
+supported by the parser. Currently, [] () <> would produce a syntax error.
 ))
 
 {}
@@ -115,24 +138,23 @@ delimiters.
 This notation can represent arbitrary data. However, the base level is not
 directly interchangeable with JSON because it lacks dicts.
 
-We can represent arbitrary types by using the "call" convention with blocks.
+We can represent arbitrary types by using the "call" / "constructor" convention.
 This allows a much richer set of types compared to JSON. In this sense, our
-notation is closer to XML than JSON.
-
-Limiting the extensions to `dict{}` creates a subset fully interchangeable with
-JSON.
+notation is closer to XML than JSON. But compared to XML, it's MUCH easier to
+write and read, and has a richer set of primitive building blocks, not just
+strings.
 ))
 
-dict{"key0" "value0" "key1" "value1" "key2" "value2"}
+Dict{"key0" "value0" "key1" "value1" "key2" "value2"}
 
-set{"value0" "value1" "value2"}
+Set{"value0" "value1" "value2"}
 
-time{"1234-12-34T01:02:03Z"}
+Time{"1234-12-34T01:02:03Z"}
 
-html {
-  document {
+html{
+  document{
     {"attr0" "value0" "attr1" "value1"}
-    div {
+    div{
       {"attr0" "value0" "attr1" "value1"}
       "hello world"
     }

@@ -2,11 +2,13 @@
 <plist version="1.0">
 <dict>
   <key>scope</key>
-  <string>markup.heading.mox, markup.heading.nox</string>
+  <string>entity.name.function.fn.nox</string>
   <key>settings</key>
   <dict>
     <key>showInSymbolList</key>
     <integer>1</integer>
+    <key>symbolTransformation</key>
+    <string><![CDATA[/^/fn /]]></string>
   </dict>
 </dict>
 </plist>

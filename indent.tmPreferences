@@ -2,7 +2,7 @@
 <plist version="1.0">
 <dict>
   <key>scope</key>
-  <string>source.mox</string>
+  <string>source.mox, source.nox</string>
 
   <key>settings</key>
   <dict>

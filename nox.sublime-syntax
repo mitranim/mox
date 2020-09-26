@@ -1,0 +1,389 @@
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+file_extensions:
+  - nox
+scope: source.nox
+
+variables:
+  ident: \b[[:alpha:]_][[:alnum:]_]*\b
+
+  # Only for single-line lookahead.
+  inline_comment: /[*](?:[^*]|[*](?!/))*[*]/
+
+  # Whitespace and block comments on a single line.
+  # This should only be used for lookahead, not for capturing / scoping.
+  noise: (?:\s|{{inline_comment}})*
+
+  exponent: '[Ee][+-]?'
+
+  char_escape: \\x\h{2}|\\u\h{4}|\\U\h{8}|\\[0-7]{3}|\\.
+
+  heading: '#+\s*.*\w'
+
+contexts:
+  prototype:
+    - include: match-comments
+
+  main:
+    - include: match-numbers
+    - include: match-chars
+    - include: match-strings
+    - include: match-idents
+    - include: match-operators
+    - include: match-punctuation
+
+  match-numbers:
+    - include: match-floats
+    - include: match-integers
+
+  match-floats:
+    - include: match-floats-without-fraction
+    - include: match-floats-with-fraction
+
+  match-floats-without-fraction:
+    - match: \d+({{exponent}})\d+
+      scope: constant.numeric.float.nox
+      captures:
+        1: punctuation.separator.exponent.nox
+
+  match-floats-with-fraction:
+    - match: \d+(\.)\d+(?:({{exponent}})\d+)?
+      scope: constant.numeric.float.nox
+      captures:
+        1: punctuation.separator.decimal.nox
+        2: punctuation.separator.exponent.nox
+
+  match-integers:
+    - include: match-integers-bin
+    - include: match-integers-oct
+    - include: match-integers-dec
+    - include: match-integers-hex
+
+  match-integers-bin:
+    - match: (0b)[01]+(?=\D)
+      scope: constant.numeric.binary.nox
+      captures:
+        1: punctuation.definition.numeric.binary.nox
+
+  match-integers-oct:
+    - match: (0o)[0-7]+(?=\D)
+      scope: constant.numeric.octal.nox
+      captures:
+        1: punctuation.definition.numeric.octal.nox
+
+  match-integers-dec:
+    - match: \d+
+      scope: constant.numeric.integer.nox
+
+  match-integers-hex:
+    - match: (0[x])\h+
+      scope: constant.numeric.hex.nox
+      captures:
+        1: punctuation.definition.numeric.hexadecimal.nox
+
+  match-chars:
+    - match: \'[^']*'
+      scope: constant.character.nox
+
+  match-strings:
+    - include: match-strings-double
+    - include: match-strings-grave
+
+  match-strings-double:
+    - match: '"'
+      scope: punctuation.definition.string.begin.nox
+      push:
+        - meta_include_prototype: false
+        - meta_scope: string.quoted.double.nox
+        - match: '"'
+          scope: punctuation.definition.string.end.nox
+          pop: true
+        - match: '{{char_escape}}'
+          scope: constant.character.escape.nox
+
+  match-strings-grave:
+    - match: '`'
+      scope: punctuation.definition.string.begin.nox
+      push:
+        - meta_include_prototype: false
+        - meta_scope: string.quoted.other.nox
+        - match: '`'
+          scope: punctuation.definition.string.end.nox
+          pop: true
+
+  # TODO reconsider delimiters. Note that supporting nested comments requires
+  # opening and closing delimiters to differ.
+  match-comments:
+    - match: '(\(\()\s*({{heading}})'
+      captures:
+        1: punctuation.definition.comment.begin.nox
+        2: markup.heading.nox
+      push: pop-comment
+    - match: '\(\('
+      scope: punctuation.definition.comment.begin.nox
+      push: pop-comment
+
+  pop-comment:
+    - meta_scope: comment.block.nox
+    - match: '\)\)'
+      scope: punctuation.definition.comment.end.nox
+      pop: true
+    - match: '^({{heading}})'
+      captures:
+        1: markup.heading.nox
+    - include: match-comments
+
+  match-bools:
+    - match: \b(?:true|false)\b
+      scope: constant.language.nox
+
+  match-nil:
+    - match: \bnil\b
+      scope: constant.language.nox
+
+  match-self:
+    - match: \bself\b
+      scope: constant.language.nox
+
+  match-idents:
+    - include: match-keywords
+    - include: match-blank-idents
+    - include: match-calls
+    - include: match-other-idents
+
+  match-keywords:
+    - include: match-bools
+    - include: match-nil
+    - include: match-self
+    - include: match-fn
+    - include: match-func
+    - include: match-type
+
+  match-blank-idents:
+    - match: \b_\b
+      scope: variable.language.blank.nox
+
+  match-calls:
+    - match: '{{ident}}(?={{noise}}\{)'
+      scope: variable.function.nox
+
+  match-other-idents:
+    - match: '{{ident}}'
+      scope: variable.other.nox
+
+  match-operators:
+    - match: '[~!@#$%^&*:<>.?/\\=+-]+'
+      scope: keyword.operator.mox
+
+  match-punctuation:
+    - include: match-braces
+
+  match-braces:
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      push:
+        - match: \}
+          scope: punctuation.section.braces.end.nox
+          pop: true
+        - include: main
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+
+  match-fn:
+    - match: \bfn\b(?={{noise}}\{)
+      scope: storage.type.keyword.function.nox
+      push: pop-fn-0
+
+  pop-fn-0:
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-fn-1
+    - include: pop-before-nonblank
+
+  # Expecting maybe name, then params.
+  pop-fn-1:
+    - include: pop-on-brace-end
+    - match: '{{ident}}'
+      scope: entity.name.function.fn.nox
+      set: pop-fn-2
+    - match: (?=\{)
+      set: pop-fn-2
+    - include: main
+
+  # Expecting params.
+  pop-fn-2:
+    - include: pop-on-brace-end
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-fn-3
+    - include: main
+
+  # Params.
+  pop-fn-3:
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+      set: pop-fn-4
+    - match: \bself\b
+      scope: variable.parameter.nox constant.language.nox
+    - match: '{{ident}}'
+      scope: variable.parameter.nox
+    - include: main
+
+  pop-fn-4:
+    - include: pop-on-brace-end
+    - include: main
+
+  match-func:
+    - match: \bfunc\b(?={{noise}}\{)
+      scope: storage.type.keyword.function.nox
+      push: pop-func-0
+
+  pop-func-0:
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-func-1
+    - include: pop-before-nonblank
+
+  # Expecting maybe name, then params.
+  pop-func-1:
+    - include: pop-on-brace-end
+    - match: '{{ident}}'
+      scope: entity.name.function.func.nox
+      set: pop-func-2
+    - match: (?=\{)
+      set: pop-func-2
+    - include: main
+
+  # Expecting params.
+  pop-func-2:
+    - include: pop-on-brace-end
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-func-3
+    - include: main
+
+  # Params.
+  pop-func-3:
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+      set: pop-func-4
+    - match: \bself\b
+      scope: variable.parameter.nox constant.language.nox
+      push: pop-type
+    - match: '{{ident}}'
+      scope: variable.parameter.nox
+      push: pop-type
+    - include: main
+
+  # Expecting maybe return keyword and type, then body.
+  pop-func-4:
+    - include: pop-on-brace-end
+    - match: '\bret\b'
+      scope: storage.type.keyword.nox
+      set: pop-func-6
+    - match: (?=\S)
+      set: pop-func-8
+
+  # # Expecting return type, then body.
+  # pop-func-5:
+  #   - include: pop-on-brace-end
+  #   - match: '{{ident}}'
+  #     scope: storage.type.nox
+  #     set: pop-func-6
+  #   - match: (?=\S)
+  #     set: pop-func-8
+
+  # Expecting maybe return type's {}, then body.
+  pop-func-6:
+    - include: pop-on-brace-end
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-func-7
+    - match: (?=\S)
+      set: pop-func-8
+
+  pop-func-7:
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+      set: pop-func-8
+    - include: match-types
+    - include: main
+
+  pop-func-8:
+    - include: pop-on-brace-end
+    - include: main
+
+  match-type:
+    - match: \btype\b(?={{noise}}\{)
+      scope: storage.type.keyword.type.nox
+      push: pop-type-0
+
+  pop-type-0:
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-type-1
+    - include: pop-before-nonblank
+
+  pop-type-1:
+    - include: pop-on-brace-end
+    - match: '{{ident}}'
+      scope: entity.name.type.nox
+      set: pop-type-2
+    - include: main
+
+  pop-type-2:
+    - include: pop-on-brace-end
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set: pop-type-3
+    - match: (?=\S)
+      set: pop-type-4
+
+  # Generic parameters in braces.
+  pop-type-3:
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+      set: pop-func-8
+    - include: match-types
+    - include: main
+
+  pop-type-4:
+    - include: pop-on-brace-end
+    - include: main
+
+  match-ident-prefix:
+    - match: '({{ident}}){{noise}}(\.)(?={{noise}}{{ident}})'
+      captures:
+        1: variable.other.nox
+        2: keyword.operator.nox
+
+  match-types:
+    - include: match-ident-prefix
+    - match: '{{ident}}'
+      scope: storage.type.nox
+      push: pop-maybe-type-block
+
+  pop-type:
+    - include: match-ident-prefix
+    - match: '{{ident}}'
+      scope: storage.type.nox
+      set: pop-maybe-type-block
+    - include: pop-before-nonblank
+
+  pop-maybe-type-block:
+    - match: \{
+      scope: punctuation.section.braces.begin.nox
+      set:
+        - include: pop-on-brace-end
+        - include: match-types
+    - include: pop-before-nonblank
+
+  pop-before-nonblank:
+    - match: (?=\S)
+      pop: true
+
+  pop-on-brace-end:
+    - match: \}
+      scope: punctuation.section.braces.end.nox
+      pop: true

@@ -3,7 +3,7 @@
 (( # Level 2: Language ))
 
 ((
-This level represents the syntax of a hypothetical language. The AST is defined
+This level represents the syntax of a hypothetical language, which is defined
 in terms of the Level 1 data notation. It doesn't add anything that would
 require changing the parser.
 ))
@@ -24,9 +24,9 @@ ident{
 }
 
 ((
-The only punctuation is {} and the dot accessor. There is no comma or semicolon.
-The language is whitespace-insensitive, but space must be used to separate
-literals, symbols, operators and so on:
+The only punctuation is {} and the infix dot accessor. There is no comma or
+semicolon. The language is whitespace-insensitive, but space must be used to
+separate literals, symbols, operators and so on:
 ))
 
 {single_ident}
@@ -34,8 +34,8 @@ literals, symbols, operators and so on:
 {one two}
 
 ((
-A {}, when not preceded by an identifier, may be a block. A block is an
-expression with a result:
+A {}, when not preceded by an identifier, may be a code block, as in C-like
+syntaxes. A code block is an expression with a result:
 ))
 
 {10 "20"}
@@ -52,28 +52,28 @@ fmt.println{
 }
 
 ((
-An identifier before a block "takes" the block as its "input". In case of
-functions, they take parameters. In case of macros and special syntactic forms,
-they take a chunk of AST.
+Conceptually speaking, an identifier or operator before a block "takes" the
+block as its "input". In case of functions, they take parameters. In case of
+macros and special syntactic forms, they take a chunk of AST.
 ))
 
 (( ## Naming Convention ))
 
 ((
-Most identifiers use `snake_case`. Type names use `Capital_snake_case`.
-Constants use `UPPER_SNAKE_CASE`. Other case styles should be either forbidden
-by the compiler, or automatically changed by the formatter.
-))
+* Constants use `UPPER_SNAKE_CASE`.
+* Type names use `Capital_snake_case`.
+* Other identifiers use `snake_case`.
 
-ident_snake_case
-Type_capital_snake_case
+Other case styles should be forbidden by the compiler and automatically changed
+by the formatter.
+))
 CONSTANT_UPPER_SNAKE_CASE
+Type_capital_snake_case
+ident_snake_case
 
 ((
-Abbreviations are considered normal words, not uppercased. Mixing lower and
-upper case is not allowed.
+Abbreviations are considered regular words and obey the regular casing rules.
 ))
-
 json_encode
 json_decode
 Json_encoder
@@ -85,7 +85,6 @@ Json_decoder
 An identifier followed by braces may invoke a function, a macro, a special
 syntactic form, or a type conversion.
 ))
-
 some_func{arg0 arg1 ...}
 some_ident.some_method{arg0 arg1 ...}
 some_macro{expressions}
@@ -95,17 +94,13 @@ some_type{some_val}
 Function calls, operators, boolean expressions, everything uses the prefix
 notation with braces:
 ))
-
 +{one two}
-
 and{one or{two three}}
 
 ((
 The dot property accessor is the only infix operator:
 ))
-
 one.two.three
-
 some_func{}.some_method{}.some_method{}.some_field
 
 (( ## Function Definitions ))
@@ -113,8 +108,13 @@ some_func{}.some_method{}.some_method{}.some_field
 ((
 `fn` has full type inference. Parameter and return types can't be specified. The
 function can optionally be named. A named function used as a statement, rather
-than as an expression, is added to the scope.
+than as an expression, is added to the scope under that name.
 ))
+
+(( Empty function. ))
+fn{{}}
+
+fn{{a b} +{a b}}
 
 fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
 
@@ -125,9 +125,11 @@ fn{add{a b} +{a b}}}
 The function can optionally be named. A named function used as a statement,
 rather than as an expression, is added to the scope.
 
-The return type must be specified after parameters, enclosed in `ret{...}`. This
-allows to disambiguate the return type from the expressions following it.
+The return type must be specified after parameters, enclosed in `ret{...}`.
 ))
+
+(( Empty function. ))
+func{{}}
 
 func{{a T b T} ret{T} +{a b}}
 
@@ -162,7 +164,7 @@ func{
 }
 
 func{
-  Some_type.some_method{param0 Other_type} ret {Another_type}
+  Some_type.some_method{param0 Other_type} ret{Another_type}
   self.other_method{}
   self.other_method{}
 }
@@ -172,6 +174,15 @@ func{
   self.other_method{}
   self.other_method{}
 }
+
+((
+Neither `fn` nor `func` is a reserved keyword, as there are NO reserved
+keywords. They can be used for variables, functions, struct fields, and more.
+))
+
+type{Some_type struct{fn any}}
+
+var{func func{{}}}
 
 (( ## Type Forms ))
 
@@ -187,27 +198,24 @@ struct{
 ((
 Generic types specify their "parameter types" in {}.
 ))
-
-tuple{Some_type Some_type Some_type}
-
-array{16 byte}
-
-slice{byte}
-
-slice{slice{byte}}
-
-dict{string Some_type}
-
-dict{array{16 byte} dict{string slice{byte}}}
+Tuple{Some_type Some_type Some_type}
+Array{16 Byte}
+Slice{Byte}
+Slice{Slice{Byte}}
+Dict{String Some_type}
+Dict{Array{16 Byte} Dict{String Slice{Byte}}}
 
 ((
 Variant type / tagged union type.
 ))
-
 variant{
   Variant0 Some_type
-  Variant1 tuple{Some_type}
+  Variant1 Other_type
 }
+
+((
+TODO: syntax for function types.
+))
 
 (( ## Type Definitions ))
 
@@ -218,9 +226,9 @@ followed by a type form.
 
 type{
   Parse_state struct{
-    string string
-    trail  int
-    cursor int
+    string String
+    trail  Int
+    cursor Int
     ast    Nodes
   }
 }
@@ -238,8 +246,8 @@ Generic types specify their parameters in {}.
 
 type{
   Opt{T} variant{
-    Some tuple{T}
-    None tuple{}
+    Some Tuple{T}
+    None Tuple{}
   }
 }
 
@@ -263,7 +271,7 @@ type{
 used for variables, functions, struct fields, and more.
 ))
 
-type{Some_type struct{type string}}
+type{Some_type struct{type String}}
 
 var{type "blah"}
 
@@ -271,9 +279,9 @@ var{type "blah"}
 
 Some_slice{10 20 30}
 
-slice{int} {10 20 30}
+Slice{Int} {10 20 30}
 
-Some_dict{
+Some_Dict{
   "one" 10
   "two" 20
   "three" 30
@@ -332,26 +340,35 @@ sql_query{`
 (( The type returned by `sql_query`. ))
 type{
   Sql_query struct{
-    text string
-    args slice{any}
+    text String
+    args Slice{any}
   }
 }
 
 ((
-Example of XML generation with a macro. Uses HTML tags to make the example
-easier to understand, even though HTML is not XML-compliant.
-
-In this example, {{ }} double braces are used for interpolating arbitrary
-expressions.
+Example of generating HTML with a hypothetical `xml` macro. Uses {{ }} for
+interpolation. The macro could be defined to return an AST or print a string.
 ))
-
 xml{
-  div{
-    {attr0 "value0" attr1 "value1"}
-    span{"text"}
-    "text"
-    {{var0}}
-    {{str{var0 var1 var2}}}
+  html{
+    document{
+      div{
+        (( Attributes ))
+        {attr0 "value0" attr1 "value1"}
+
+        (( Nested element with a text node ))
+        span{"text"}
+
+        (( Text node ))
+        "text"
+
+        (( Interpolation ))
+        {{var0}}
+
+        (( Interpolation ))
+        {{str{var0 var1 var2}}}
+      }
+    }
   }
 }
 
@@ -378,14 +395,14 @@ Example use cases:
 
 type{
   Rope_string struct{
-    chunks slice{Rope_chunk}
+    chunks Slice{Rope_chunk}
   }
 }
 
 type{
   Rope_chunk struct{
-    len int
-    chars array{1024 char}
+    len Int
+    chars Array{1024 Char}
   }
 }
 
@@ -414,7 +431,7 @@ Example output, if chunk size was 4 rather than 1024:
   let{
     rope Rope_string
     Rope_string{
-      chunks slice{
+      chunks Slice{
         Rope_chunk{len 4 chars {104 101 108 108}}
         Rope_chunk{len 4 chars {111 32 119 111}}
         Rope_chunk{len 3 chars {114 108 100}}
@@ -425,9 +442,9 @@ Example output, if chunk size was 4 rather than 1024:
 macro_literal_string{fn{
   Rope_string{literal_string_content}
 
-  let{chars slice{char} string_to_chars{literal_string_content}}
+  let{chars Slice{Char} string_to_chars{literal_string_content}}
 
-  let{char_chunks slice{slice{char}} chars.split_by_length{1024}}
+  let{char_chunks Slice{Slice{Char}} chars.split_by_length{1024}}
 
   quote{{
     chunks unquote{char_chunks.map{fn{{chars}
