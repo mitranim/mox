@@ -12,7 +12,7 @@ The syntax has two levels:
 
 * Language-independent data notation. See `reference_data_notation.mox`.
 
-* Some hypothetical language. See `reference_language.mox`.
+* Some hypothetical language. See `reference_language.nox`.
 
 ## Inspiration
 
@@ -35,3 +35,5 @@ Explicit delimiters → easier to modify, because of special editor support for 
 Placing delimiters on separate lines → easier to modify intermediary code.
 
 Only prefix notation → less thinking, no infix precedence errors.
+
+Simple universal structure → better for DSLs.

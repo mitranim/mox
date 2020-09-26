@@ -16,9 +16,9 @@ Minor note for later: the parser API should include an option to parse exactly
 one syntactic form out of the input, instead of the entire input; this could be
 useful for embedding this in some other syntax.
 
-The data notation is defined in terms of Unicode characters, independently of
-any text encoding. The input to the parser should be a sequence of code points,
-not bytes. For example, if the parser is implemented in Go, the input should be
+This notation is defined in terms of Unicode characters, independently of any
+text encoding. The input to the parser should be a sequence of code points, not
+bytes. For example, if the parser is implemented in Go, the input should be
 `[]rune`.
 
 This notation currently doesn't define a way to embed binary data. It's possible
@@ -63,11 +63,11 @@ variety of use cases, such as reformatting code or editing configuration files.
 
 (( ## Numbers ))
 
-10      (( Decimal integers. ))
-123.456 (( Decimal floats. ))
 0b10    (( Binary integers. ))
 0o123   (( Octal integers. ))
 0x123   (( Hex integers. ))
+10      (( Decimal integers. ))
+123.456 (( Decimal floats. ))
 +10     (( Positives. ))
 -10     (( Negatives. ))
 'a'     (( Characters (Uni-code-points). ))
@@ -122,15 +122,34 @@ functions:
 (( ## Blocks ))
 
 ((
-Sequences and blocks of code are enclosed in braces: {}. No other delimiters are
-supported by the parser. Currently, [] () <> would produce a syntax error.
+Blocks of code are enclosed in braces: {}. Braces are used for sequences,
+grouping, function calls, type literals, other special forms. No other
+delimiters are supported by the parser; [] () would produce a syntax error.
 ))
 
 {}
-{{}}
 {{} {} {{}}}
 {10 "20"}
 {10 {"20"}}
+
+((
+By convention, an identifier or operator followed by a block represents a
+function call, a literal constructor, a macro, or any other special form.
+))
+ident{
+  ident{10 "20"}
+  {30 "40"}
+  ident{50 {...}}
+}
++{10 20 30}
+
+((
+DSL writers are also free to use the Lisp-style calling convention where the
+callable is placed inside the braces. We recommend the previously mentioned
+out-of-braces convention.
+))
+{ident 10 "20" {ident 30 "40"}}
+{+ 10 20 30}
 
 (( ## Serialization and JSON ))
 
@@ -145,17 +164,17 @@ write and read, and has a richer set of primitive building blocks, not just
 strings.
 ))
 
-Dict{"key0" "value0" "key1" "value1" "key2" "value2"}
+Dict{"key0" 123 "key1" 456 "key2" 789}
 
-Set{"value0" "value1" "value2"}
+Set{123 456 789}
 
 Time{"1234-12-34T01:02:03Z"}
 
 html{
   document{
-    {"attr0" "value0" "attr1" "value1"}
+    {"attr0" "value0" "attr1" 123}
     div{
-      {"attr0" "value0" "attr1" "value1"}
+      {"attr2" "value2" "attr3" 456}
       "hello world"
     }
   }
