@@ -64,7 +64,7 @@ macros and special syntactic forms, they take a chunk of AST.
 * Type names use `Capital_snake_case`.
 * Other identifiers use `snake_case`.
 
-To avoid ambiguity, constant names must be at least two characters long.
+To avoid ambiguity, constant names must have at least two letters.
 
 Other case styles should be forbidden by the compiler and automatically changed
 by the formatter.

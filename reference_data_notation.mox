@@ -64,6 +64,12 @@ editing configuration files.
 
 (( ## Numbers ))
 
+((
+Numbers must be parsed with unlimited precision, in order to support untyped
+numeric constants and "big number" literals. The AST must preserve the
+information required to print the number back exactly as it was written.
+))
+
 0b10    (( Binary integers. ))
 0o123   (( Octal integers. ))
 0x123   (( Hex integers. ))
@@ -136,6 +142,8 @@ delimiters are supported by the parser; [] () would produce a syntax error.
 ((
 By convention, an identifier or operator followed by a block represents a
 function call, a literal constructor, a macro, or any other special form.
+
+`ident` has no special meaning in these examples. It's an arbitrary identifier.
 ))
 ident{
   ident{10 "20"}
