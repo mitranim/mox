@@ -50,7 +50,7 @@ func (self *Parser) PopNodes() ([]Node, error) {
 			return nodes, err
 		}
 		nodes = append(nodes, node)
-		self.mustAdvance(start)
+		self.mustHaveAdvanced(start)
 	}
 
 	return nodes, nil
@@ -63,7 +63,7 @@ func (self *Parser) PopNode() (_ Node, err error) {
 
 	defer func(start int) {
 		if err == nil {
-			self.mustAdvance(start)
+			self.mustHaveAdvanced(start)
 		}
 	}(self.Cursor)
 
@@ -95,7 +95,7 @@ func (self *Parser) PopWhitespace() (NodeWhitespace, error) {
 		self.Cursor++
 	}
 
-	node := NodeWhitespace(self.Source[start:self.Cursor])
+	node := NodeWhitespace(self.From(start))
 	if len(node) == 0 {
 		return "", self.Error(fmt.Errorf(`expected whitespace, found %q`, self.Preview()))
 	}
@@ -121,7 +121,7 @@ func (self *Parser) PopComment() (NodeComment, error) {
 		if self.NextPair(')', ')') {
 			levels--
 			if levels == 0 {
-				node := NodeComment(self.Source[start:self.Cursor])
+				node := NodeComment(self.From(start))
 				self.Cursor += 2
 				return node, nil
 			}
@@ -169,7 +169,7 @@ func (self *Parser) popIntegerWithBase(a rune, b rune, charMap []bool) (NodeNumb
 		self.Cursor++
 	}
 
-	node := NodeNumber(self.Source[start:self.Cursor])
+	node := NodeNumber(self.From(start))
 	if !(len(node) > 2) {
 		return node, self.Error(fmt.Errorf(`expected at least one digit, found %q`, self.Preview()))
 	}
@@ -195,7 +195,6 @@ func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
 			goto fraction
 		}
 
-		self.Cursor++
 		goto end
 	}
 
@@ -208,7 +207,7 @@ fraction:
 	}
 
 end:
-	node := NodeNumber(self.Source[start:self.Cursor])
+	node := NodeNumber(self.From(start))
 	// Internal sanity check.
 	if !(len(node) > 0) {
 		return node, self.Error(fmt.Errorf(`expected at least one digit, found %q`, self.Preview()))
@@ -227,7 +226,7 @@ func (self *Parser) PopIdentifier() (NodeIdentifier, error) {
 		self.Cursor++
 	}
 
-	return NodeIdentifier(self.Source[start:self.Cursor]), nil
+	return NodeIdentifier(self.From(start)), nil
 }
 
 // Placeholder implementation without escapes.
@@ -261,7 +260,7 @@ func (self *Parser) popStringBetween(prefix rune, suffix rune) (string, error) {
 				return "", self.Error(fmt.Errorf(`expected character, found unexpected closing %q`, suffix))
 			}
 
-			str := string(self.Source[start:self.Cursor])
+			str := string(self.From(start))
 			self.Cursor++
 			return str, nil
 		}
@@ -285,10 +284,13 @@ func (self *Parser) PopBlock() (Node, error) {
 			self.Cursor++
 			break
 		}
+
+		start := self.Cursor
 		node, err := self.PopNode()
 		if err != nil {
 			return nodes, err
 		}
+		self.mustHaveAdvanced(start)
 		nodes = append(nodes, node)
 	}
 
@@ -321,6 +323,16 @@ func (self Parser) Head() rune {
 	return self.Source[self.Cursor]
 }
 
+func (self Parser) From(start int) []rune {
+	if start < 0 {
+		start = 0
+	}
+	if start < self.Cursor {
+		return self.Source[start:self.Cursor]
+	}
+	return nil
+}
+
 func (self Parser) Preview() string {
 	const limit = 32
 	if self.Left() > limit {
@@ -329,7 +341,7 @@ func (self Parser) Preview() string {
 	return string(self.Source[self.Cursor:])
 }
 
-func (self *Parser) mustAdvance(start int) {
+func (self *Parser) mustHaveAdvanced(start int) {
 	if !(self.Cursor > start) {
 		panic(self.Error(fmt.Errorf(`internal error: failed to advance cursor`)))
 	}
