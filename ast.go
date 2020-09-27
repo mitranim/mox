@@ -155,7 +155,7 @@ func (self *Parser) PopNumberOctal() (NodeNumber, error) {
 }
 
 func (self *Parser) PopNumberHexadecimal() (NodeNumber, error) {
-	return self.popIntegerWithBase('0', 'o', charMapDigitsHexadecimal)
+	return self.popIntegerWithBase('0', 'x', charMapDigitsHexadecimal)
 }
 
 func (self *Parser) popIntegerWithBase(a rune, b rune, charMap []bool) (NodeNumber, error) {
