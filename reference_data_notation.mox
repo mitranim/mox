@@ -2,7 +2,7 @@
 
 ((
 The first level of the syntax defines a "data notation": literal syntax for
-various primitive types and nestable block structure. This level is not aware
+various primitive types and a nestable block structure. This level is not aware
 of any language specifics. It has NO RESERVED KEYWORDS or special constants such
 as `true` or `false`.
 
@@ -12,9 +12,14 @@ be useful for future DSLs.
 
 The provided tooling must include a parser and a formatter.
 
-Minor note for later: the parser API should include an option to parse exactly
-one syntactic form out of the input, instead of the entire input; this could be
-useful for embedding this in some other syntax.
+The parser for this data notation must preserve whitespace and comments in the
+AST, and provide an option to drop them if desired. Preserving whitespace and
+comments is essential for a variety of use cases, such as reformatting code or
+editing configuration files.
+
+The parser API should include an option to parse exactly one syntactic form out
+of the input, instead of the entire input; this could be useful for embedding
+this in some other syntax.
 
 This notation is defined in terms of Unicode characters, independently of any
 text encoding. The input to the parser should be a sequence of code points, not
@@ -53,13 +58,9 @@ Rust, Swift convention that a comment immediately followed by a named definition
 serves as the documentation for that definition. Also, most likely following the
 Rust, Swift convention of using Markdown.
 
-If a language defined in terms of this notation has an interpreted form with a
-REPL, comments might be used to generate help docs accessible in the REPL.
-
-The parser for this data notation must preserve whitespace and comments in the
-AST, and provide an option to drop them if desired. Preserving whitespace and
-comments is essential for a variety of use cases, such as reformatting code or
-editing configuration files.
+As mentioned above, comments must be preserved in the AST. If a language defined
+in terms of this notation has an interpreted form with a REPL, the docs
+generated from the comments might be made accessible in the REPL.
 ))
 
 (( ## Numbers ))

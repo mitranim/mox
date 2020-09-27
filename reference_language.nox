@@ -12,7 +12,7 @@ require changing the parser.
 
 ((
 Everything is either a primitive literal, an ident or operator, or a block
-enclosed in {} (braces). Braces are the only delimiter; () [] are not used.
+enclosed in {} braces. Braces are the only delimiter; () [] are not used.
 ))
 
 ident{
@@ -284,7 +284,7 @@ Some_slice{10 20 30}
 
 Slice{Int}{10 20 30}
 
-Some_Dict{
+Some_dict{
   "one"   10
   "two"   20
   "three" 30
@@ -302,8 +302,9 @@ Some_struct{
 The language supports macros. Macros are functions interpreted by the compiler.
 They take AST and return AST.
 
-Macros should have access to information about the scope surrounding the AST,
-as well as metadata about each expression, such as its type.
+Macros should have access to the scope information including available
+variables, functions, types, imported modules, etc., as well as metadata about
+each expression, such as its type.
 
 Technically, macros might not be limited to just AST operations. There might be
 other interesting uses, for example involving IO.
