@@ -24,7 +24,7 @@ func TestFormat(t *testing.T) {
 }
 
 func TestParseAndFormat(t *testing.T) {
-	source := `(( # Comment )) {123.456 ident "hello world" {'a'}}`
+	source := `(( # Comment (( nested )) )) {123.456 ident "hello world" {'a'}}`
 
 	parser := ParserFromUtf8String(source)
 
@@ -34,7 +34,7 @@ func TestParseAndFormat(t *testing.T) {
 	}
 
 	expectedAst := []Node{
-		NodeComment(` # Comment `),
+		NodeComment(` # Comment (( nested )) `),
 		NodeWhitespace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),

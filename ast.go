@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"unicode/utf8"
 )
 
 type Node fmt.Stringer
@@ -29,18 +30,18 @@ func (self NodeOperator) String() string     { return string(self) }
 func (self NodeBlock) String() string        { return `{` + FormatNodes([]Node(self)) + `}` }
 
 type Parser struct {
-	Source []rune
+	Source string
 	Cursor int
 }
 
 func ParserFromUtf8String(input string) *Parser {
-	return &Parser{Source: []rune(input)}
+	return &Parser{Source: input}
 }
 
 func (self *Parser) PopNodes() ([]Node, error) {
 	var nodes []Node
 
-	for self.HasMore() {
+	for self.More() {
 		start := self.Cursor
 		node, err := self.PopNode()
 		if errors.Is(err, io.EOF) {
@@ -57,7 +58,7 @@ func (self *Parser) PopNodes() ([]Node, error) {
 }
 
 func (self *Parser) PopNode() (_ Node, err error) {
-	if !self.HasMore() {
+	if !self.More() {
 		return nil, self.Error(io.EOF)
 	}
 
@@ -92,7 +93,7 @@ func (self *Parser) PopNode() (_ Node, err error) {
 func (self *Parser) PopWhitespace() (NodeWhitespace, error) {
 	start := self.Cursor
 	for self.NextCharIn(charMapWhitespace) {
-		self.Cursor++
+		self.Advance()
 	}
 
 	node := NodeWhitespace(self.From(start))
@@ -107,14 +108,14 @@ func (self *Parser) PopComment() (NodeComment, error) {
 		return "", self.Error(fmt.Errorf(`expected opening "((", found %q`, self.Preview()))
 	}
 
-	self.Cursor += 2
+	self.AdvancePair('(', '(')
 	start := self.Cursor
 	levels := 1
 
-	for self.HasMore() {
+	for self.More() {
 		if self.NextPair('(', '(') {
 			levels++
-			self.Cursor += 2
+			self.AdvancePair('(', '(')
 			continue
 		}
 
@@ -122,12 +123,12 @@ func (self *Parser) PopComment() (NodeComment, error) {
 			levels--
 			if levels == 0 {
 				node := NodeComment(self.From(start))
-				self.Cursor += 2
+				self.AdvancePair(')', ')')
 				return node, nil
 			}
 		}
 
-		self.Cursor++
+		self.Advance()
 	}
 
 	return "", self.Error(fmt.Errorf(`expected closing "))", found unexpected EOF`))
@@ -164,9 +165,9 @@ func (self *Parser) popIntegerWithBase(a rune, b rune, charMap []bool) (NodeNumb
 	}
 
 	start := self.Cursor
-	self.Cursor += 2
+	self.AdvancePair(a, b)
 	for self.NextCharIn(charMap) {
-		self.Cursor++
+		self.Advance()
 	}
 
 	node := NodeNumber(self.From(start))
@@ -184,14 +185,14 @@ func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
 		return "", self.Error(fmt.Errorf(`expected digit, found %q`, self.Preview()))
 	}
 
-	for self.HasMore() {
+	for self.More() {
 		if self.NextCharIn(charMapDigitsDecimal) {
-			self.Cursor++
+			self.Advance()
 			continue
 		}
 
 		if self.NextChar('.') {
-			self.Cursor++
+			self.Advance()
 			goto fraction
 		}
 
@@ -203,7 +204,7 @@ fraction:
 		return "", self.Error(fmt.Errorf(`expected digit, found %q`, self.Preview()))
 	}
 	for self.NextCharIn(charMapDigitsDecimal) {
-		self.Cursor++
+		self.Advance()
 	}
 
 end:
@@ -221,9 +222,9 @@ func (self *Parser) PopIdentifier() (NodeIdentifier, error) {
 	}
 
 	start := self.Cursor
-	self.Cursor++
+	self.Advance()
 	for self.NextCharIn(charMapIdentifier) {
-		self.Cursor++
+		self.Advance()
 	}
 
 	return NodeIdentifier(self.From(start)), nil
@@ -251,21 +252,21 @@ func (self *Parser) popStringBetween(prefix rune, suffix rune) (string, error) {
 		return "", self.Error(fmt.Errorf(`expected opening %q, found %q`, prefix, self.Preview()))
 	}
 
-	self.Cursor++
+	self.Advance()
 	start := self.Cursor
 
-	for self.HasMore() {
+	for self.More() {
 		if self.NextChar(suffix) {
 			if self.Cursor == start {
 				return "", self.Error(fmt.Errorf(`expected character, found unexpected closing %q`, suffix))
 			}
 
-			str := string(self.From(start))
-			self.Cursor++
+			str := self.From(start)
+			self.Advance()
 			return str, nil
 		}
 
-		self.Cursor++
+		self.Advance()
 	}
 
 	return "", self.Error(fmt.Errorf(`expected character or closing %q, found EOF`, suffix))
@@ -276,12 +277,12 @@ func (self *Parser) PopBlock() (Node, error) {
 		return nil, self.Error(fmt.Errorf(`expected opening "{", found %q`, self.Preview()))
 	}
 
-	self.Cursor++
+	self.Advance()
 	var nodes NodeBlock
 
-	for self.HasMore() {
+	for self.More() {
 		if self.NextChar('}') {
-			self.Cursor++
+			self.Advance()
 			break
 		}
 
@@ -297,7 +298,7 @@ func (self *Parser) PopBlock() (Node, error) {
 	return nodes, nil
 }
 
-func (self Parser) HasMore() bool {
+func (self Parser) More() bool {
 	return self.Left() > 0
 }
 
@@ -314,34 +315,59 @@ func (self Parser) NextCharIn(chars []bool) bool {
 }
 
 func (self Parser) NextPair(a rune, b rune) bool {
-	return self.Left() >= 2 &&
-		self.Source[self.Cursor] == a &&
-		self.Source[self.Cursor+1] == b
+	for i, char := range self.Rest() {
+		if i == 0 {
+			if char != a {
+				return false
+			}
+			continue
+		}
+		return char == b
+	}
+	return false
 }
 
 func (self Parser) Head() rune {
-	return self.Source[self.Cursor]
+	char, _ := utf8.DecodeRuneInString(self.Rest())
+	return char
 }
 
-func (self Parser) From(start int) []rune {
+func (self Parser) From(start int) string {
 	if start < 0 {
 		start = 0
 	}
 	if start < self.Cursor {
 		return self.Source[start:self.Cursor]
 	}
-	return nil
+	return ""
+}
+
+func (self Parser) Rest() string {
+	if self.More() {
+		return self.Source[self.Cursor:]
+	}
+	return ""
 }
 
 func (self Parser) Preview() string {
 	const limit = 32
 	if self.Left() > limit {
-		return string(self.Source[self.Cursor:self.Cursor+limit]) + " ..."
+		return self.Source[self.Cursor:self.Cursor+limit] + " ..."
 	}
-	return string(self.Source[self.Cursor:])
+	return self.Source[self.Cursor:]
 }
 
-func (self *Parser) mustHaveAdvanced(start int) {
+func (self *Parser) Advance() {
+	_, size := utf8.DecodeRuneInString(self.Rest())
+	self.Cursor += size
+}
+
+func (self *Parser) AdvancePair(a rune, b rune) {
+	self.Cursor += utf8.RuneLen(a)
+	self.Cursor += utf8.RuneLen(b)
+}
+
+func (self Parser) mustHaveAdvanced(start int) {
 	if !(self.Cursor > start) {
 		panic(self.Error(fmt.Errorf(`internal error: failed to advance cursor`)))
 	}

@@ -22,9 +22,7 @@ of the input, instead of the entire input; this could be useful for embedding
 this in some other syntax.
 
 This notation is defined in terms of Unicode characters, independently of any
-text encoding. The input to the parser should be a sequence of code points, not
-bytes. For example, if the parser is implemented in Go, the input should be
-`[]rune`.
+text encoding. Specific parser implementations may restrict input to UTF-8 text.
 
 This notation currently doesn't define a way to embed binary data. It's possible
 instead to use base64 strings (language-independent but requires special

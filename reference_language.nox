@@ -129,9 +129,9 @@ fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
 fn{add{a b} +{a b}}}
 
 ((
-`func` has no type inference. Parameter and return types must be fully specified.
-The function can optionally be named. A named function used as a statement,
-rather than as an expression, is added to the scope.
+`func` has no type inference. Parameter and return types must be fully
+specified. The function can optionally be named. A named function used as a
+statement, rather than as an expression, is added to the scope under that name.
 
 The return type must be specified after parameters, enclosed in `ret{...}`.
 ))
@@ -166,7 +166,7 @@ func{
 }
 
 func{
-  some_method{self ref{Some_type} param0 Other_type} ret{Another_type}
+  some_method{self Ref{Some_type} param0 Other_type} ret{Another_type}
   self.other_method{}
   self.other_method{}
 }
@@ -178,7 +178,7 @@ func{
 }
 
 func{
-  ref{Some_type}.some_method{param0 Other_type} ret{Another_type}
+  Ref{Some_type}.some_method{param0 Other_type} ret{Another_type}
   self.other_method{}
   self.other_method{}
 }
@@ -413,7 +413,9 @@ type{
 
 ((
 Example constructor macro for a rope string type. Overloads the string literal
-syntax for that type, converting it to a literal constructor AST.
+syntax, replacing literal strings with literal `Rope_string` constructors. This
+macro should be invoked for any string literal whose type is `Rope_string`,
+either due to an explicit cast (see below), or due to type inference.
 
 The macro is strongly typed, but its signature is inferred by the compiler.
 
@@ -425,15 +427,10 @@ constructor of that type, the part in {}, omitting the type identifier.
 
 Example input:
 
-  let{
-    rope Rope_string
-    "hello world"
-  }
+    Rope_string{"hello world"}
 
 Example output, if chunk size was 4 rather than 1024:
 
-  let{
-    rope Rope_string
     Rope_string{
       chunks Slice{
         Rope_chunk{len 4 chars {104 101 108 108}}
@@ -441,7 +438,6 @@ Example output, if chunk size was 4 rather than 1024:
         Rope_chunk{len 3 chars {114 108 100}}
       }
     }
-  }
 ))
 macro_literal_string{fn{
   Rope_string{literal_string_content}
