@@ -27,15 +27,16 @@ func (self NodeStringGrave) String() string  { return "`" + string(self) + "`" }
 func (self NodeIdentifier) String() string   { return string(self) }
 func (self NodeCharacter) String() string    { return `'` + string(self) + `'` }
 func (self NodeOperator) String() string     { return string(self) }
-func (self NodeBlock) String() string        { return `{` + FormatNodes([]Node(self)) + `}` }
+func (self NodeBlock) String() string        { return `{` + Format([]Node(self)) + `}` }
+
+func Parse(input string) ([]Node, error) {
+	parser := Parser{Source: input}
+	return parser.PopNodes()
+}
 
 type Parser struct {
 	Source string
 	Cursor int
-}
-
-func ParserFromUtf8String(input string) *Parser {
-	return &Parser{Source: input}
 }
 
 func (self *Parser) PopNodes() ([]Node, error) {
@@ -198,6 +199,7 @@ func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
 
 		goto end
 	}
+	goto end
 
 fraction:
 	if !self.NextCharIn(charMapDigitsDecimal) {
@@ -412,27 +414,47 @@ func (self Error) Format(fms fmt.State, verb rune) {
 	}
 }
 
-func FormatNodes(nodes []Node) string {
-	var buf string
+func Format(nodes []Node) string {
+	var out string
+	var prev Node
+
 	for _, node := range nodes {
-		chunk := node.String()
-		if buf != "" && chunk != "" && !hasWhitespaceSuffix(buf) && !hasWhitespacePrefix(chunk) {
-			buf += ` `
+		/**
+		Omitting nil can be convenient for AST editing. This allows to "remove" a
+		node by replacing it with nil, instead of using `NodeWhitespace("")` or
+		shifting the other nodes.
+		*/
+		if node == nil {
+			continue
 		}
-		buf += chunk
+
+		if requiresWhitespaceInfix(prev, node) {
+			out += ` `
+		}
+
+		out += node.String()
+		prev = node
 	}
-	return buf
+
+	return out
+}
+
+func requiresWhitespaceInfix(left Node, right Node) bool {
+	return (isIdentifier(left) || isNumber(left)) &&
+		(isIdentifier(right) || isNumber(right))
+}
+
+func isIdentifier(node Node) bool {
+	_, ok := node.(NodeIdentifier)
+	return ok
+}
+
+func isNumber(node Node) bool {
+	_, ok := node.(NodeNumber)
+	return ok
 }
 
 func stringToBytesAlloc(input string) []byte { return []byte(input) }
-
-func hasWhitespacePrefix(str string) bool {
-	return str != "" && isCharIn(charMapWhitespace, rune(str[0]))
-}
-
-func hasWhitespaceSuffix(str string) bool {
-	return str != "" && isCharIn(charMapWhitespace, rune(str[len(str)-1]))
-}
 
 var charMapWhitespace = charMap(" \n\r\t\v")
 var charMapOperator = charMap(`~!@#$%^&*:<>.?/\=+-`)

@@ -7,16 +7,28 @@ import (
 
 func TestFormat(t *testing.T) {
 	ast := []Node{
-		NodeComment(` # Comment `),
+		NodeComment(` # comment `),
 		NodeWhitespace(` `),
 		NodeBlock{
-			NodeNumber("123.456"),
+			NodeNumber(`123.456`),
+			NodeWhitespace(` `),
 			NodeStringDouble(`hello world`),
 		},
 	}
 
-	expected := `(( # Comment )) {123.456 "hello world"}`
-	actual := FormatNodes(ast)
+	expected := `(( # comment )) {123.456 "hello world"}`
+	actual := Format(ast)
+
+	if expected != actual {
+		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", expected, actual)
+	}
+}
+
+func TestFormatWithNil(t *testing.T) {
+	ast := []Node{nil, NodeIdentifier(`one`), nil, NodeIdentifier(`two`), nil}
+
+	expected := `one two`
+	actual := Format(ast)
 
 	if expected != actual {
 		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", expected, actual)
@@ -24,17 +36,15 @@ func TestFormat(t *testing.T) {
 }
 
 func TestParseAndFormat(t *testing.T) {
-	source := `(( # Comment (( nested )) )) {123.456 ident "hello world" {'a'}}`
+	source := `(( # comment (( nested )) )) {123.456 ident "hello world" {'a'}}`
 
-	parser := ParserFromUtf8String(source)
-
-	ast, err := parser.PopNodes()
+	ast, err := Parse(source)
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
 
 	expectedAst := []Node{
-		NodeComment(` # Comment (( nested )) `),
+		NodeComment(` # comment (( nested )) `),
 		NodeWhitespace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
@@ -53,8 +63,63 @@ func TestParseAndFormat(t *testing.T) {
 		t.Fatalf("expected parsed AST to be:\n%#v\ngot:\n%#v\n", expectedAst, ast)
 	}
 
-	formatted := FormatNodes(ast)
+	formatted := Format(ast)
 	if source != formatted {
 		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", source, formatted)
+	}
+}
+
+func TestParseAndFormatWithMinimalWhitespace(t *testing.T) {
+	source := `((comment)){123"one"two"three"{four'a'456}789}five 012`
+
+	ast, err := Parse(source)
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	expectedAst := []Node{
+		NodeComment(`comment`),
+		NodeBlock{
+			NodeNumber(`123`),
+			NodeStringDouble(`one`),
+			NodeIdentifier(`two`),
+			NodeStringDouble(`three`),
+			NodeBlock{
+				NodeIdentifier(`four`),
+				NodeCharacter(`a`),
+				NodeNumber(`456`),
+			},
+			NodeNumber(`789`),
+		},
+		NodeIdentifier(`five`),
+		NodeWhitespace(` `),
+		NodeNumber(`012`),
+	}
+
+	if !reflect.DeepEqual(expectedAst, ast) {
+		t.Fatalf("expected parsed AST to be:\n%#v\ngot:\n%#v\n", expectedAst, ast)
+	}
+
+	formatted := Format(ast)
+	if source != formatted {
+		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", source, formatted)
+	}
+}
+
+func TestFormatAddingWhitespace(t *testing.T) {
+	ast := []Node{
+		NodeIdentifier(`one`),
+		NodeIdentifier(`two`),
+		NodeStringDouble(`three`),
+		NodeIdentifier(`four`),
+		NodeNumber(`123`),
+		NodeNumber(`456`),
+		NodeIdentifier(`five`),
+	}
+
+	expected := `one two"three"four 123 456 five`
+	formatted := Format(ast)
+	if expected != formatted {
+		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", expected, formatted)
 	}
 }
