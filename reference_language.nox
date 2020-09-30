@@ -124,9 +124,9 @@ fn{{}}
 
 fn{{a b} +{a b}}
 
-fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
-
 fn{add{a b} +{a b}}}
+
+fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
 
 ((
 `func` has no type inference. Parameter and return types must be fully
@@ -457,3 +457,53 @@ macro_literal_string{fn{
     }}}
   }}
 }}
+
+(( ## Variables ))
+
+((
+Note: as most of this document, this is mostly about the syntax. Variables have
+many, many other semantics, which are omitted here.
+))
+
+((
+`var` declares a variable, specifies its type, and assigns a value. Either type
+or value may be omitted, but not both.
+
+Syntax quirk: this relies on the `Title_snake` naming convention for types. If
+we didn't have this convention, we'd have to split `var` into two keywords, one
+with type inference and one without.
+
+This is a void statement that doesn't return a value.
+))
+var{some_ident Some_type}
+var{some_ident           "some_value"}
+var{some_ident Some_type "some_value"}
+
+((
+`const` declares a constant value. Unlike variables, constants are statically
+allocated and immutable. Constants may be used in compile-time calculations or
+as parameters to generic types, such as array sizes. The value is mandatory and
+must be calculable at compile time. The type may be inferred.
+
+Syntax quirk: this relies on the `Title_snake` naming convention for types. If
+we didn't have this convention, we'd have to split `const` into two keywords,
+one with type inference and one without.
+
+This is a void statement that doesn't return a value.
+))
+const{some_ident           "some_value"}
+const{some_ident Some_type "some_value"}
+
+((
+`=` reassigns a variable's value. The variable must have been previously
+declared.
+
+Note that unlike some languages such as Erlang and Haskell, we must have
+distinct forms for variable declaration and assignment. We intend to allow
+procedural programming that involves variable reassignment. Declarations will be
+block scoped, while assignments may want to modify a variable in an outer scope,
+necessitating an assignment-only form.
+
+This is a void statement that doesn't return a value.
+))
+={some_ident "other_value"}
