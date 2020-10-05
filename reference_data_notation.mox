@@ -115,15 +115,15 @@ ident.ident.ident
 10+20
 
 ((
-This notation is biased towards prefix rather than infix. It doesn't define
-operator precedence and doesn't support parentheses for grouping, only braces.
-Therefore, DSL writers are advised to use operators in the prefix position, like
-functions:
+This notation is biased towards treating operators as functions. It doesn't
+define operator precedence and doen't support parentheses for grouping. See the
+section on calling convention below.
 ))
-!ident
 +{10 20 30}
 <{10 20}
 >{30 40}
+not{false}
+and{true or{true false}}
 
 (( ## Blocks ))
 
@@ -134,29 +134,44 @@ delimiters are supported by the parser; [] () would produce a syntax error.
 ))
 
 {}
-{{} {} {{}}}
+{{} {}}
 {10 "20"}
-{10 {"20"}}
+{10 {"20" 30}}
+
+(( ## Calling ))
 
 ((
-By convention, an identifier or operator followed by a block represents a
-function call, a literal constructor, a macro, or any other special form.
+By convention, anything followed by a block represents a "call": function call,
+operator call, literal constructor, macro, any other special form.
 
-`ident` has no special meaning in these examples. It's an arbitrary identifier.
+In a typed language defined in terms of this notation, generic types would be
+instantiated into concrete types by using the same "call" notation. See below.
 ))
-ident{
-  ident{10 "20"}
-  {30 "40"}
-  ident{50 {...}}
-}
+
+(( Function call ))
+one{10 "20"}
+
+(( Method call ))
+one.two.three{10 "20"}
+
+(( Operator call ))
 +{10 20 30}
 
+(( Constructor literal ))
+StringDict{"key0" "value0" "key1" "value1"}
+
+(( Generic type instantiation (the result is a type) ))
+Dict{String Int}
+
+(( Type instantiation -> constructor literal ))
+Dict{String String}{"key0" "value0" "key1" "value1"}
+
 ((
-DSL writers are also free to use the Lisp-style calling convention where the
-callable is placed inside the braces. We recommend the previously mentioned
-out-of-braces convention.
+DSL writers are free to use the Lisp-style calling convention, where the
+"callable" is the first element in braces. However, we recommend the previously
+mentioned outside-braces convention.
 ))
-{ident 10 "20" {ident 30 "40"}}
+{some_func 10 "20" {other_func 30 "40"}}
 {+ 10 20 30}
 
 (( ## Serialization and JSON ))
@@ -180,9 +195,9 @@ Time{"1234-12-34T01:02:03Z"}
 
 html{
   document{
-    {"attr0" "value0" "attr1" 123}
+    {attr0 "value0" attr1 123}
     div{
-      {"attr2" "value2" "attr3" 456}
+      {attr2 "value2" attr3 456}
       "hello world"
     }
   }

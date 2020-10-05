@@ -13,49 +13,46 @@ require changing the parser.
 ((
 Everything is either a primitive literal, an ident or operator, or a block
 enclosed in {} braces. Braces are the only delimiter; () [] are not used.
-))
 
-ident{
-  ident{10 "20"}
-  ident{
-    ident{ident{10 "20"}}
-  }
-  {10 "20"}
-}
-
-((
 The only punctuation is {} and the infix dot accessor. There is no comma or
 semicolon. The language is whitespace-insensitive, but space must be used to
-separate literals, symbols, operators and so on:
+separate literals, symbols, operators and so on.
+
+{} must always be preceded by something, and always represents some kind of
+"call", such as: function call, method call, operator call, macro invocation,
+instantiating a generic type, type constructor literal, type cast, type
+conversion, or one of various special forms. See examples in other sections.
 ))
 
-{single_ident}
-
-{one two}
-
-((
-A {}, when not preceded by an identifier, may be a code block, as in C-like
-syntaxes. A code block is an expression with a result:
-))
-
-{10 "20"}
-
-(( This is a function call with a single argument. ))
-fmt.println{
-  (( This block is an expression. ))
-  {
-    some_func{}
-    some_func{}
-    (( This will be printed. ))
-    return_result
+some_func{
+  some_val.some_method{10 "20"}
+  block{
+    some_func{some_func{10 "20"} 30}
+    some_func{10 "20"}
   }
 }
 
+some_val.some_method{}.some_method{}.some_method{}
+
+String_dict_type{"key0" "value0" "key1" "value1"}
+
+Array{16 Int}
+
 ((
-Conceptually speaking, an identifier or operator before a block "takes" the
-block as its "input". In case of functions, they take parameters. In case of
-macros and special syntactic forms, they take a chunk of AST.
+To use a block as an expression, we provide the special form `block`. It creates
+a subscope, contains multiple statements, and returns its last expression.
+
+This is a function call with a single argument.
 ))
+fmt.println{
+  (( This block is an expression. ))
+  block{
+    (( Side effect. ))
+    fmt.println{"hello world"}
+    (( Return value. ))
+    "20"
+  }
+}
 
 (( ## Naming Convention ))
 
@@ -277,6 +274,28 @@ used for variables, functions, struct fields, and more.
 ))
 var{type "blah"}
 type{Some_type struct{type String}}
+
+((
+We can associate metadata with each type, and with each field of each type.
+Public/private is part of that metadata. Public is the default, private is
+opt-in.
+
+In this example the syntax is probably too long, but that's fixable.
+))
+type{
+  Some_struct struct{
+    field_one   String
+    field_two   Int8
+    field_three Bool
+    lock        sync.mutex
+  }
+  meta{
+    field_one   Dict{"json" "fieldOne"   "db" "field_one"}
+    field_two   Dict{"json" "fieldTwo"   "db" "field_two"}
+    field_three Dict{"json" "fieldThree" "db" "field_three"}
+    lock        Dict{"private" true}
+  }
+}
 
 (( ## Instantiating Types ))
 
