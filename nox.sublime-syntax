@@ -6,7 +6,14 @@ file_extensions:
 scope: source.nox
 
 variables:
-  ident: \b[[:alpha:]_][[:alnum:]_]*\b
+  ident_any: \b[[:alpha:]_][[:alnum:]_]*\b
+  ident_const: \b[[:upper:]][[:upper:][:digit:]_]*[[:upper:]][[:upper:][:digit:]_]*\b
+  ident_type: \b[[:upper:]_][[:alnum:]_]*\b
+  ident_other: \b[[:lower:]_][[:alnum:]_]*\b
+
+  # `this` is included for the JS dialect. Should be removed after splitting
+  # the dialects. Shouldn't be used for parameters.
+  self: \b(?:self|this)\b
 
   # Only for single-line lookahead.
   inline_comment: /[*](?:[^*]|[*](?!/))*[*]/
@@ -134,6 +141,23 @@ contexts:
         1: markup.heading.nox
     - include: match-comments
 
+  match-idents:
+    - include: match-idents-keywords
+    - include: match-idents-consts
+    - include: match-idents-types
+    - include: match-idents-calls
+    - include: match-idents-other
+
+  match-idents-keywords:
+    - include: match-bools
+    - include: match-nil
+    - include: match-self
+    - include: match-fn
+    - include: match-func
+    - include: match-if
+    - include: match-case
+    - include: match-try
+
   match-bools:
     - match: \b(?:true|false)\b
       scope: constant.language.nox
@@ -143,28 +167,23 @@ contexts:
       scope: constant.language.nox
 
   match-self:
-    - match: \bself\b
+    - match: '{{self}}'
       scope: constant.language.nox
 
-  match-idents:
-    - include: match-keywords
-    - include: match-calls
-    - include: match-other-idents
+  match-idents-consts:
+    - match: '{{ident_const}}'
+      scope: variable.other.constant.nox
 
-  match-keywords:
-    - include: match-bools
-    - include: match-nil
-    - include: match-self
-    - include: match-fn
-    - include: match-func
-    - include: match-type
+  match-idents-types:
+    - match: '{{ident_type}}'
+      scope: storage.type.nox
 
-  match-calls:
-    - match: '{{ident}}(?={{noise}}\{)'
+  match-idents-calls:
+    - match: '{{ident_any}}(?={{noise}}\{)'
       scope: variable.function.nox
 
-  match-other-idents:
-    - match: '{{ident}}'
+  match-idents-other:
+    - match: '{{ident_any}}'
       scope: variable.other.nox
 
   match-operators:
@@ -183,7 +202,7 @@ contexts:
           pop: true
         - include: main
     - match: \}
-      scope: punctuation.section.braces.end.nox
+      scope: punctuation.section.braces.end.nox invalid.illegal.nox
 
   match-fn:
     - match: \bfn\b(?={{noise}}\{)
@@ -199,7 +218,7 @@ contexts:
   # Expecting maybe name, then params.
   pop-fn-1:
     - include: pop-on-brace-end
-    - match: '{{ident}}'
+    - match: '{{ident_any}}'
       scope: entity.name.function.fn.nox
       set: pop-fn-2
     - match: (?=\{)
@@ -221,7 +240,8 @@ contexts:
       set: pop-fn-4
     - match: \bself\b
       scope: variable.parameter.nox constant.language.nox
-    - match: '{{ident}}'
+    - include: match-idents-types
+    - match: '{{ident_any}}'
       scope: variable.parameter.nox
     - include: main
 
@@ -243,7 +263,7 @@ contexts:
   # Expecting maybe name, then params.
   pop-func-1:
     - include: pop-on-brace-end
-    - match: '{{ident}}'
+    - match: '{{ident_any}}'
       scope: entity.name.function.func.nox
       set: pop-func-2
     - match: (?=\{)
@@ -265,114 +285,76 @@ contexts:
       set: pop-func-4
     - match: \bself\b
       scope: variable.parameter.nox constant.language.nox
-      push: pop-type
-    - match: '{{ident}}'
+    - include: match-idents-types
+    - match: '{{ident_any}}'
       scope: variable.parameter.nox
-      push: pop-type
     - include: main
 
   # Expecting maybe return keyword and type, then body.
   pop-func-4:
     - include: pop-on-brace-end
-    - match: '\bret\b'
+    - match: \bret\b
       scope: storage.type.keyword.nox
-      set: pop-func-6
+      set: pop-func-5
     - match: (?=\S)
-      set: pop-func-8
+      set: pop-func-5
 
-  # # Expecting return type, then body.
-  # pop-func-5:
-  #   - include: pop-on-brace-end
-  #   - match: '{{ident}}'
-  #     scope: storage.type.nox
-  #     set: pop-func-6
-  #   - match: (?=\S)
-  #     set: pop-func-8
-
-  # Expecting maybe return type's {}, then body.
-  pop-func-6:
-    - include: pop-on-brace-end
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
-      set: pop-func-7
-    - match: (?=\S)
-      set: pop-func-8
-
-  pop-func-7:
-    - match: \}
-      scope: punctuation.section.braces.end.nox
-      set: pop-func-8
-    - include: match-types
-    - include: main
-
-  pop-func-8:
+  pop-func-5:
     - include: pop-on-brace-end
     - include: main
 
-  match-type:
-    - match: \btype\b(?={{noise}}\{)
-      scope: storage.type.keyword.type.nox
-      push: pop-type-0
+  match-if:
+    - match: \bif\b(?={{noise}}\{)
+      scope: keyword.control.conditional.if.nox
+      push: pop-if-0
 
-  pop-type-0:
+  pop-if-0:
     - match: \{
       scope: punctuation.section.braces.begin.nox
-      set: pop-type-1
+      set: pop-if-1
     - include: pop-before-nonblank
 
-  pop-type-1:
+  pop-if-1:
     - include: pop-on-brace-end
-    - match: '{{ident}}'
-      scope: entity.name.type.nox
-      set: pop-type-2
+    - match: \b(?:then|elif|else)\b
+      scope: keyword.control.conditional.nox
     - include: main
 
-  pop-type-2:
-    - include: pop-on-brace-end
+  match-case:
+    - match: \bcase\b(?={{noise}}\{)
+      scope: keyword.control.conditional.case.nox
+      push: pop-case-0
+
+  pop-case-0:
     - match: \{
       scope: punctuation.section.braces.begin.nox
-      set: pop-type-3
-    - match: (?=\S)
-      set: pop-type-4
-
-  # Generic parameters in braces.
-  pop-type-3:
-    - match: \}
-      scope: punctuation.section.braces.end.nox
-      set: pop-func-8
-    - include: match-types
-    - include: main
-
-  pop-type-4:
-    - include: pop-on-brace-end
-    - include: main
-
-  match-ident-prefix:
-    - match: '({{ident}}){{noise}}(\.)(?={{noise}}{{ident}})'
-      captures:
-        1: variable.other.nox
-        2: keyword.operator.nox
-
-  match-types:
-    - include: match-ident-prefix
-    - match: '{{ident}}'
-      scope: storage.type.nox
-      push: pop-maybe-type-block
-
-  pop-type:
-    - include: match-ident-prefix
-    - match: '{{ident}}'
-      scope: storage.type.nox
-      set: pop-maybe-type-block
+      set: pop-case-1
     - include: pop-before-nonblank
 
-  pop-maybe-type-block:
+  pop-case-1:
+    - include: pop-on-brace-end
+    - match: \b(?:when|then|else)\b
+      scope: keyword.control.conditional.nox
+    - include: main
+
+  match-try:
+    - match: \btry\b(?={{noise}}\{)
+      scope: keyword.control.exception.try.nox
+      push: pop-try-0
+
+  pop-try-0:
     - match: \{
       scope: punctuation.section.braces.begin.nox
-      set:
-        - include: pop-on-brace-end
-        - include: match-types
+      set: pop-try-1
     - include: pop-before-nonblank
+
+  pop-try-1:
+    - include: pop-on-brace-end
+    - match: \bcatch\b
+      scope: keyword.control.exception.catch.nox
+    - match: \bfinally\b
+      scope: keyword.control.exception.finally.nox
+    - include: main
 
   pop-before-nonblank:
     - match: (?=\S)
