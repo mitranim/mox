@@ -7,10 +7,17 @@
   <key>settings</key>
   <dict>
     <key>increaseIndentPattern</key>
-    <string></string>
+    <string><![CDATA[(?x)
+      .*\{
+      # Ignore whitespace and inline comments to the end.
+      (?:\s*|[(][(].*[)][)])*
+      $
+    ]]></string>
 
     <key>decreaseIndentPattern</key>
-    <string></string>
+    <string><![CDATA[(?x)(?:
+      \s*\}
+    )]]></string>
 
     <key>bracketIndentNextLinePattern</key>
     <string></string>
