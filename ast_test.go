@@ -36,7 +36,7 @@ func TestFormatWithNil(t *testing.T) {
 }
 
 func TestParseAndFormat(t *testing.T) {
-	source := `(( # comment (( nested )) )) {123.456 ident "hello world" {'a'}}`
+	source := `(( # comment (( nested )) )) {123.456 ++ ident "hello world" {'a'}}`
 
 	ast, err := Parse(source)
 	if err != nil {
@@ -48,6 +48,8 @@ func TestParseAndFormat(t *testing.T) {
 		NodeWhitespace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
+			NodeWhitespace(` `),
+			NodeOperator(`++`),
 			NodeWhitespace(` `),
 			NodeIdentifier(`ident`),
 			NodeWhitespace(` `),
@@ -70,7 +72,7 @@ func TestParseAndFormat(t *testing.T) {
 }
 
 func TestParseAndFormatWithMinimalWhitespace(t *testing.T) {
-	source := `((comment)){123"one"two"three"{four'a'456}789}five 012`
+	source := `((comment)){123"one"++two"three"{four'a'456}789}five 012`
 
 	ast, err := Parse(source)
 	if err != nil {
@@ -82,6 +84,7 @@ func TestParseAndFormatWithMinimalWhitespace(t *testing.T) {
 		NodeBlock{
 			NodeNumber(`123`),
 			NodeStringDouble(`one`),
+			NodeOperator(`++`),
 			NodeIdentifier(`two`),
 			NodeStringDouble(`three`),
 			NodeBlock{
@@ -115,9 +118,11 @@ func TestFormatAddingWhitespace(t *testing.T) {
 		NodeNumber(`123`),
 		NodeNumber(`456`),
 		NodeIdentifier(`five`),
+		NodeOperator(`++`),
+		NodeIdentifier(`six`),
 	}
 
-	expected := `one two"three"four 123 456 five`
+	expected := `one two"three"four 123 456 five++six`
 	formatted := Format(ast)
 	if expected != formatted {
 		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", expected, formatted)

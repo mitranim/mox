@@ -78,6 +78,8 @@ func (self *Parser) PopNode() (_ Node, err error) {
 		return self.PopNumber()
 	case self.NextCharIn(charMapIdentifierStart):
 		return self.PopIdentifier()
+	case self.NextCharIn(charMapOperator):
+		return self.PopOperator()
 	case self.NextChar('\''):
 		return self.PopCharacter()
 	case self.NextChar('"'):
@@ -230,6 +232,19 @@ func (self *Parser) PopIdentifier() (NodeIdentifier, error) {
 	}
 
 	return NodeIdentifier(self.From(start)), nil
+}
+
+func (self *Parser) PopOperator() (NodeOperator, error) {
+	if !self.NextCharIn(charMapOperator) {
+		return "", self.Error(fmt.Errorf(`expected operator, found %q`, self.Preview()))
+	}
+
+	start := self.Cursor
+	for self.NextCharIn(charMapOperator) {
+		self.Advance()
+	}
+
+	return NodeOperator(self.From(start)), nil
 }
 
 // Placeholder implementation without escapes.
