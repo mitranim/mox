@@ -144,4 +144,4 @@ contexts:
           pop: true
         - include: main
     - match: \}
-      scope: punctuation.section.braces.end.mox
+      scope: punctuation.section.braces.end.mox invalid.illegal.mox
