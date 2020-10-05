@@ -196,9 +196,9 @@ Time{"1234-12-34T01:02:03Z"}
 html{
   document{
     {attr0 "value0" attr1 123}
-    div{
-      {attr2 "value2" attr3 456}
-      "hello world"
+    "custom-element"{
+      {attr2 "value2" "data-attr" 456}
+      span{"hello world"}
     }
   }
 }

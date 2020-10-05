@@ -24,11 +24,11 @@ instantiating a generic type, type constructor literal, type cast, type
 conversion, or one of various special forms. See examples in other sections.
 ))
 
-some_func{
+some_ident{
   some_val.some_method{10 "20"}
   block{
-    some_func{some_func{10 "20"} 30}
-    some_func{10 "20"}
+    some_ident{some_ident{10 "20"} 30}
+    some_ident{10 "20"}
   }
 }
 
@@ -121,7 +121,7 @@ fn{{}}
 
 fn{{a b} +{a b}}
 
-fn{add{a b} +{a b}}}
+fn{add{a b} +{a b}}
 
 fn{sum{coll} coll.fold{0 fn{{a b} +{a b}}}}
 
@@ -272,7 +272,7 @@ type{
 `type` is not a reserved keyword, as there are NO reserved keywords. It can be
 used for variables, functions, struct fields, and more.
 ))
-var{type "blah"}
+var{type "some_value"}
 type{Some_type struct{type String}}
 
 ((
@@ -364,7 +364,7 @@ sql_query{`
 type{
   Sql_query struct{
     text String
-    args Slice{any}
+    args Slice{Any}
   }
 }
 
@@ -461,9 +461,9 @@ Example output, if chunk size was 4 rather than 1024:
 macro_literal_string{fn{
   Rope_string{literal_string_content}
 
-  let{chars Slice{Char} string_to_chars{literal_string_content}}
+  var{chars Slice{Char} string_to_chars{literal_string_content}}
 
-  let{char_chunks Slice{Slice{Char}} chars.split_by_length{1024}}
+  var{char_chunks Slice{Slice{Char}} chars.split_by_length{1024}}
 
   quote{{
     chunks unquote{char_chunks.map{fn{{chars}
@@ -514,7 +514,7 @@ const{some_ident           "some_value"}
 const{some_ident Some_type "some_value"}
 
 ((
-`=` reassigns a variable's value. The variable must have been previously
+`set` reassigns a variable's value. The variable must have been previously
 declared.
 
 Note that unlike some languages such as Erlang and Haskell, we must have
@@ -525,4 +525,4 @@ necessitating an assignment-only form.
 
 This is a void statement that doesn't return a value.
 ))
-={some_ident "other_value"}
+set{some_ident "other_value"}
