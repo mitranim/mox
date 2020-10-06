@@ -1,0 +1,6 @@
+[
+  {
+    "caption": "Mox: swap parens and braces",
+    "command": "mox_swap_parens_braces",
+  },
+]
