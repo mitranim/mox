@@ -8,16 +8,21 @@
   <dict>
     <key>increaseIndentPattern</key>
     <string><![CDATA[(?x)
-      .*\{
-      # Ignore whitespace and inline comments to the end.
-      (?:\s*|[(][(].*[)][)])*
-      $
+      # Content in matched parens or arbitrary other content, greedy.
+      (?<re0> \(\g<re0>*\) | [^()] )*+
+
+      # Unmatched opening paren.
+      \(
+
+      # Content in matched parens or arbitrary other content, greedy.
+      (?<re1> \(\g<re1>*\) | [^()] )*+
+
+      # Another unmatched opening paren or EOL.
+      (?:\(|$)
     ]]></string>
 
     <key>decreaseIndentPattern</key>
-    <string><![CDATA[(?x)(?:
-      \s*\}
-    )]]></string>
+    <string>[^(]*\)</string>
 
     <key>bracketIndentNextLinePattern</key>
     <string></string>
