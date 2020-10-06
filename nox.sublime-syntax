@@ -6,6 +6,11 @@ file_extensions:
 scope: source.nox
 
 variables:
+  comment_start: \{\{
+  comment_end: \}\}
+  block_start: \(
+  block_end: \)
+
   ident_any: \b[[:alpha:]_][[:alnum:]_]*\b
   ident_const: \b[[:upper:]][[:upper:][:digit:]_]*[[:upper:]][[:upper:][:digit:]_]*\b
   ident_type: \b[[:upper:]_][[:alnum:]_]*\b
@@ -122,18 +127,18 @@ contexts:
   # TODO reconsider delimiters. Note that supporting nested comments requires
   # opening and closing delimiters to differ.
   match-comments:
-    - match: '(\(\()\s*({{heading}})'
+    - match: '({{comment_start}})\s*({{heading}})'
       captures:
         1: punctuation.definition.comment.begin.nox
         2: markup.heading.nox
       push: pop-comment
-    - match: '\(\('
+    - match: '{{comment_start}}'
       scope: punctuation.definition.comment.begin.nox
       push: pop-comment
 
   pop-comment:
     - meta_scope: comment.block.nox
-    - match: '\)\)'
+    - match: '{{comment_end}}'
       scope: punctuation.definition.comment.end.nox
       pop: true
     - match: '^({{heading}})'
@@ -179,7 +184,7 @@ contexts:
       scope: storage.type.nox
 
   match-idents-calls:
-    - match: '{{ident_any}}(?={{noise}}\{)'
+    - match: '{{ident_any}}(?={{noise}}{{block_start}})'
       scope: variable.function.nox
 
   match-idents-other:
@@ -191,52 +196,52 @@ contexts:
       scope: keyword.operator.mox
 
   match-punctuation:
-    - include: match-braces
+    - include: match-blocks
 
-  match-braces:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+  match-blocks:
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       push:
-        - match: \}
-          scope: punctuation.section.braces.end.nox
+        - match: '{{block_end}}'
+          scope: punctuation.section.block.end.nox
           pop: true
         - include: main
-    - match: \}
-      scope: punctuation.section.braces.end.nox invalid.illegal.nox
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.nox invalid.illegal.nox
 
   match-fn:
-    - match: \bfn\b(?={{noise}}\{)
+    - match: \bfn\b(?={{noise}}{{block_start}})
       scope: storage.type.keyword.function.nox
       push: pop-fn-0
 
   pop-fn-0:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-fn-1
     - include: pop-before-nonblank
 
   # Expecting maybe name, then params.
   pop-fn-1:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: '{{ident_any}}'
       scope: entity.name.function.fn.nox
       set: pop-fn-2
-    - match: (?=\{)
+    - match: (?={{block_start}})
       set: pop-fn-2
     - include: main
 
   # Expecting params.
   pop-fn-2:
-    - include: pop-on-brace-end
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - include: pop-on-block-end
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-fn-3
     - include: main
 
   # Params.
   pop-fn-3:
-    - match: \}
-      scope: punctuation.section.braces.end.nox
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.nox
       set: pop-fn-4
     - match: \bself\b
       scope: variable.parameter.nox constant.language.nox
@@ -246,42 +251,42 @@ contexts:
     - include: main
 
   pop-fn-4:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - include: main
 
   match-func:
-    - match: \bfunc\b(?={{noise}}\{)
+    - match: \bfunc\b(?={{noise}}{{block_start}})
       scope: storage.type.keyword.function.nox
       push: pop-func-0
 
   pop-func-0:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-func-1
     - include: pop-before-nonblank
 
   # Expecting maybe name, then params.
   pop-func-1:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: '{{ident_any}}'
       scope: entity.name.function.func.nox
       set: pop-func-2
-    - match: (?=\{)
+    - match: (?={{block_start}})
       set: pop-func-2
     - include: main
 
   # Expecting params.
   pop-func-2:
-    - include: pop-on-brace-end
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - include: pop-on-block-end
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-func-3
     - include: main
 
   # Params.
   pop-func-3:
-    - match: \}
-      scope: punctuation.section.braces.end.nox
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.nox
       set: pop-func-4
     - match: \bself\b
       scope: variable.parameter.nox constant.language.nox
@@ -292,7 +297,7 @@ contexts:
 
   # Expecting maybe return keyword and type, then body.
   pop-func-4:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: \bret\b
       scope: storage.type.keyword.nox
       set: pop-func-5
@@ -300,56 +305,56 @@ contexts:
       set: pop-func-5
 
   pop-func-5:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - include: main
 
   match-if:
-    - match: \bif\b(?={{noise}}\{)
+    - match: \bif\b(?={{noise}}{{block_start}})
       scope: keyword.control.conditional.if.nox
       push: pop-if-0
 
   pop-if-0:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-if-1
     - include: pop-before-nonblank
 
   pop-if-1:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: \b(?:then|elif|else)\b
       scope: keyword.control.conditional.nox
     - include: main
 
   match-case:
-    - match: \bcase\b(?={{noise}}\{)
+    - match: \bcase\b(?={{noise}}{{block_start}})
       scope: keyword.control.conditional.case.nox
       push: pop-case-0
 
   pop-case-0:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-case-1
     - include: pop-before-nonblank
 
   pop-case-1:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: \b(?:when|then|else)\b
       scope: keyword.control.conditional.nox
     - include: main
 
   match-try:
-    - match: \btry\b(?={{noise}}\{)
+    - match: \btry\b(?={{noise}}{{block_start}})
       scope: keyword.control.exception.try.nox
       push: pop-try-0
 
   pop-try-0:
-    - match: \{
-      scope: punctuation.section.braces.begin.nox
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.nox
       set: pop-try-1
     - include: pop-before-nonblank
 
   pop-try-1:
-    - include: pop-on-brace-end
+    - include: pop-on-block-end
     - match: \bcatch\b
       scope: keyword.control.exception.catch.nox
     - match: \bfinally\b
@@ -360,7 +365,7 @@ contexts:
     - match: (?=\S)
       pop: true
 
-  pop-on-brace-end:
-    - match: \}
-      scope: punctuation.section.braces.end.nox
+  pop-on-block-end:
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.nox
       pop: true

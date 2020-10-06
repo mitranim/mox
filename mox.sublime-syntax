@@ -6,6 +6,10 @@ file_extensions:
 scope: source.mox
 
 variables:
+  comment_start: \{\{
+  comment_end: \}\}
+  block_start: \(
+  block_end: \)
   ident: \b[[:alpha:]_][[:alnum:]_]*\b
   exponent: '[Ee][+-]?'
   char_escape: \\x\h{2}|\\u\h{4}|\\U\h{8}|\\[0-7]{3}|\\.
@@ -105,18 +109,18 @@ contexts:
   # TODO reconsider delimiters. Note that supporting nested comments requires
   # opening and closing delimiters to differ.
   match-comments:
-    - match: '(\(\()\s*({{heading}})'
+    - match: '({{comment_start}})\s*({{heading}})'
       captures:
         1: punctuation.definition.comment.begin.mox
         2: markup.heading.mox
       push: pop-comment
-    - match: '\(\('
+    - match: '{{comment_start}}'
       scope: punctuation.definition.comment.begin.mox
       push: pop-comment
 
   pop-comment:
     - meta_scope: comment.block.mox
-    - match: '\)\)'
+    - match: '{{comment_end}}'
       scope: punctuation.definition.comment.end.mox
       pop: true
     - match: '^({{heading}})'
@@ -133,15 +137,15 @@ contexts:
       scope: keyword.operator.mox
 
   match-punctuation:
-    - include: match-braces
+    - include: match-block
 
-  match-braces:
-    - match: \{
-      scope: punctuation.section.braces.begin.mox
+  match-block:
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.mox
       push:
-        - match: \}
-          scope: punctuation.section.braces.end.mox
+        - match: '{{block_end}}'
+          scope: punctuation.section.block.end.mox
           pop: true
         - include: main
-    - match: \}
-      scope: punctuation.section.braces.end.mox invalid.illegal.mox
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox invalid.illegal.mox

@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
+
+const CommentStart = `{{`
+const CommentEnd = `}}`
+const BlockStart = `(`
+const BlockEnd = `)`
 
 type Node fmt.Stringer
 type NodeWhitespace string
@@ -20,14 +26,14 @@ type NodeOperator string
 type NodeBlock []Node
 
 func (self NodeWhitespace) String() string   { return string(self) }
-func (self NodeComment) String() string      { return `((` + string(self) + `))` }
+func (self NodeComment) String() string      { return CommentStart + string(self) + CommentEnd }
 func (self NodeNumber) String() string       { return string(self) }
 func (self NodeStringDouble) String() string { return strconv.Quote(string(self)) }
 func (self NodeStringGrave) String() string  { return "`" + string(self) + "`" }
 func (self NodeIdentifier) String() string   { return string(self) }
 func (self NodeCharacter) String() string    { return `'` + string(self) + `'` }
 func (self NodeOperator) String() string     { return string(self) }
-func (self NodeBlock) String() string        { return `{` + Format([]Node(self)) + `}` }
+func (self NodeBlock) String() string        { return BlockStart + Format([]Node(self)) + BlockEnd }
 
 func Parse(input string) ([]Node, error) {
 	parser := Parser{Source: input}
@@ -72,7 +78,7 @@ func (self *Parser) PopNode() (_ Node, err error) {
 	switch {
 	case self.NextCharIn(charMapWhitespace):
 		return self.PopWhitespace()
-	case self.NextPair('(', '('):
+	case self.Next(CommentStart):
 		return self.PopComment()
 	case self.NextCharIn(charMapDigitsDecimal):
 		return self.PopNumber()
@@ -86,7 +92,7 @@ func (self *Parser) PopNode() (_ Node, err error) {
 		return self.PopStringDouble()
 	case self.NextChar('`'):
 		return self.PopStringGrave()
-	case self.NextChar('{'):
+	case self.Next(BlockStart):
 		return self.PopBlock()
 	default:
 		return nil, self.Error(fmt.Errorf(`unexpected %q`, self.Preview()))
@@ -96,7 +102,7 @@ func (self *Parser) PopNode() (_ Node, err error) {
 func (self *Parser) PopWhitespace() (NodeWhitespace, error) {
 	start := self.Cursor
 	for self.NextCharIn(charMapWhitespace) {
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 	node := NodeWhitespace(self.From(start))
@@ -107,43 +113,43 @@ func (self *Parser) PopWhitespace() (NodeWhitespace, error) {
 }
 
 func (self *Parser) PopComment() (NodeComment, error) {
-	if !self.NextPair('(', '(') {
-		return "", self.Error(fmt.Errorf(`expected opening "((", found %q`, self.Preview()))
+	if !self.Next(CommentStart) {
+		return "", self.Error(fmt.Errorf(`expected opening %q, found %q`, CommentStart, self.Preview()))
 	}
 
-	self.AdvancePair('(', '(')
+	self.Advance(CommentStart)
 	start := self.Cursor
 	levels := 1
 
 	for self.More() {
-		if self.NextPair('(', '(') {
+		if self.Next(CommentStart) {
 			levels++
-			self.AdvancePair('(', '(')
+			self.Advance(CommentStart)
 			continue
 		}
 
-		if self.NextPair(')', ')') {
+		if self.Next(CommentEnd) {
 			levels--
 			if levels == 0 {
 				node := NodeComment(self.From(start))
-				self.AdvancePair(')', ')')
+				self.Advance(CommentEnd)
 				return node, nil
 			}
 		}
 
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
-	return "", self.Error(fmt.Errorf(`expected closing "))", found unexpected EOF`))
+	return "", self.Error(fmt.Errorf(`expected closing %q, found unexpected EOF`, CommentEnd))
 }
 
 func (self *Parser) PopNumber() (NodeNumber, error) {
 	switch {
-	case self.NextPair('0', 'b'):
+	case self.Next(`0b`):
 		return self.PopNumberBinary()
-	case self.NextPair('0', 'o'):
+	case self.Next(`0o`):
 		return self.PopNumberOctal()
-	case self.NextPair('0', 'x'):
+	case self.Next(`0x`):
 		return self.PopNumberHexadecimal()
 	default:
 		return self.PopNumberDecimal()
@@ -151,26 +157,26 @@ func (self *Parser) PopNumber() (NodeNumber, error) {
 }
 
 func (self *Parser) PopNumberBinary() (NodeNumber, error) {
-	return self.popIntegerWithBase('0', 'b', charMapDigitsBinary)
+	return self.popIntegerWithBase(`0b`, charMapDigitsBinary)
 }
 
 func (self *Parser) PopNumberOctal() (NodeNumber, error) {
-	return self.popIntegerWithBase('0', 'o', charMapDigitsOctal)
+	return self.popIntegerWithBase(`0o`, charMapDigitsOctal)
 }
 
 func (self *Parser) PopNumberHexadecimal() (NodeNumber, error) {
-	return self.popIntegerWithBase('0', 'x', charMapDigitsHexadecimal)
+	return self.popIntegerWithBase(`0x`, charMapDigitsHexadecimal)
 }
 
-func (self *Parser) popIntegerWithBase(a rune, b rune, charMap []bool) (NodeNumber, error) {
-	if !self.NextPair(a, b) {
-		return "", self.Error(fmt.Errorf(`expected opening "%c%c", found %q`, a, b, self.Preview()))
+func (self *Parser) popIntegerWithBase(prefix string, charMap []bool) (NodeNumber, error) {
+	if !self.Next(prefix) {
+		return "", self.Error(fmt.Errorf(`expected opening %q, found %q`, prefix, self.Preview()))
 	}
 
 	start := self.Cursor
-	self.AdvancePair(a, b)
+	self.Advance(prefix)
 	for self.NextCharIn(charMap) {
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 	node := NodeNumber(self.From(start))
@@ -190,12 +196,12 @@ func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
 
 	for self.More() {
 		if self.NextCharIn(charMapDigitsDecimal) {
-			self.Advance()
+			self.AdvanceNextChar()
 			continue
 		}
 
 		if self.NextChar('.') {
-			self.Advance()
+			self.AdvanceNextChar()
 			goto fraction
 		}
 
@@ -208,7 +214,7 @@ fraction:
 		return "", self.Error(fmt.Errorf(`expected digit, found %q`, self.Preview()))
 	}
 	for self.NextCharIn(charMapDigitsDecimal) {
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 end:
@@ -226,9 +232,9 @@ func (self *Parser) PopIdentifier() (NodeIdentifier, error) {
 	}
 
 	start := self.Cursor
-	self.Advance()
+	self.AdvanceNextChar()
 	for self.NextCharIn(charMapIdentifier) {
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 	return NodeIdentifier(self.From(start)), nil
@@ -241,7 +247,7 @@ func (self *Parser) PopOperator() (NodeOperator, error) {
 
 	start := self.Cursor
 	for self.NextCharIn(charMapOperator) {
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 	return NodeOperator(self.From(start)), nil
@@ -269,7 +275,7 @@ func (self *Parser) popStringBetween(prefix rune, suffix rune) (string, error) {
 		return "", self.Error(fmt.Errorf(`expected opening %q, found %q`, prefix, self.Preview()))
 	}
 
-	self.Advance()
+	self.AdvanceNextChar()
 	start := self.Cursor
 
 	for self.More() {
@@ -279,27 +285,27 @@ func (self *Parser) popStringBetween(prefix rune, suffix rune) (string, error) {
 			}
 
 			str := self.From(start)
-			self.Advance()
+			self.AdvanceNextChar()
 			return str, nil
 		}
 
-		self.Advance()
+		self.AdvanceNextChar()
 	}
 
 	return "", self.Error(fmt.Errorf(`expected character or closing %q, found EOF`, suffix))
 }
 
 func (self *Parser) PopBlock() (Node, error) {
-	if !self.NextChar('{') {
-		return nil, self.Error(fmt.Errorf(`expected opening "{", found %q`, self.Preview()))
+	if !self.Next(BlockStart) {
+		return nil, self.Error(fmt.Errorf(`expected opening %q, found %q`, BlockStart, self.Preview()))
 	}
 
-	self.Advance()
+	self.Advance(BlockStart)
 	var nodes NodeBlock
 
 	for self.More() {
-		if self.NextChar('}') {
-			self.Advance()
+		if self.Next(BlockEnd) {
+			self.Advance(BlockEnd)
 			break
 		}
 
@@ -323,25 +329,16 @@ func (self Parser) Left() int {
 	return len(self.Source) - self.Cursor
 }
 
+func (self Parser) Next(prefix string) bool {
+	return strings.HasPrefix(self.Rest(), prefix)
+}
+
 func (self Parser) NextChar(char rune) bool {
 	return self.Left() > 0 && self.Head() == char
 }
 
 func (self Parser) NextCharIn(chars []bool) bool {
 	return self.Left() > 0 && isCharIn(chars, self.Head())
-}
-
-func (self Parser) NextPair(a rune, b rune) bool {
-	for i, char := range self.Rest() {
-		if i == 0 {
-			if char != a {
-				return false
-			}
-			continue
-		}
-		return char == b
-	}
-	return false
 }
 
 func (self Parser) Head() rune {
@@ -374,14 +371,15 @@ func (self Parser) Preview() string {
 	return self.Source[self.Cursor:]
 }
 
-func (self *Parser) Advance() {
-	_, size := utf8.DecodeRuneInString(self.Rest())
-	self.Cursor += size
+func (self *Parser) Advance(str string) {
+	for _, char := range str {
+		self.Cursor += utf8.RuneLen(char)
+	}
 }
 
-func (self *Parser) AdvancePair(a rune, b rune) {
-	self.Cursor += utf8.RuneLen(a)
-	self.Cursor += utf8.RuneLen(b)
+func (self *Parser) AdvanceNextChar() {
+	_, size := utf8.DecodeRuneInString(self.Rest())
+	self.Cursor += size
 }
 
 func (self Parser) mustHaveAdvanced(start int) {

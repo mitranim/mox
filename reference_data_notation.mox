@@ -1,6 +1,6 @@
-(( # Level 1: Data Notation ))
+{{ # Level 1: Data Notation }}
 
-((
+{{
 The first level of the syntax defines a "data notation": literal syntax for
 various primitive types and a nestable block structure. This level is not aware
 of any language specifics. It has NO RESERVED KEYWORDS or special constants such
@@ -27,29 +27,29 @@ text encoding. Specific parser implementations may restrict input to UTF-8 text.
 This notation currently doesn't define a way to embed binary data. It's possible
 instead to use base64 strings (language-independent but requires special
 interpretation) or literal byte slice constructors (language-specific).
-))
+}}
 
-(( ## Comments ))
+{{ ## Comments }}
 
-((
-Comments are enclosed in (( )) and always multiline. Nested comments are
+{{
+Comments are enclosed in {{ }} and always multiline. Nested comments are
 supported.
 
 By convention, single-line comments should have leading and trailing spaces.
 This should be enforced by the formatter:
 
-    (( space before, space after ))
+    {{ space before, space after }}
 
 By convention, multiline comments should have leading and trailing newlines,
 with no unnecessary indentation or other noise before each line. The formatter
 should enforce leading and trailing newlines:
 
-    ((
+    {{
     some_text
     some_text
         markdown_indented_code_block
     some_text
-    ))
+    }}
 
 Comments may be used to generate documentation. Most likely following the Go,
 Rust, Swift convention that a comment immediately followed by a named definition
@@ -59,26 +59,26 @@ Rust, Swift convention of using Markdown.
 As mentioned above, comments must be preserved in the AST. If a language defined
 in terms of this notation has an interpreted form with a REPL, the docs
 generated from the comments might be made accessible in the REPL.
-))
+}}
 
-(( ## Numbers ))
+{{ ## Numbers }}
 
-((
+{{
 Numbers must be parsed with unlimited precision, in order to support untyped
 numeric constants and "big number" literals. The AST must preserve the
 information required to print the number back exactly as it was written.
-))
+}}
 
-0b10    (( Binary integers. ))
-0o123   (( Octal integers. ))
-0x123   (( Hex integers. ))
-10      (( Decimal integers. ))
-123.456 (( Decimal floats. ))
-+10     (( Positives. ))
--10     (( Negatives. ))
-'a'     (( Characters (Uni-code-points). ))
+0b10    {{ Binary integers. }}
+0o123   {{ Octal integers. }}
+0x123   {{ Hex integers. }}
+10      {{ Decimal integers. }}
+123.456 {{ Decimal floats. }}
++10     {{ Positives. }}
+-10     {{ Negatives. }}
+'a'     {{ Characters (Uni-code-points). }}
 
-(( ## Strings ))
+{{ ## Strings }}
 
 "
 double string: supports newlines and escapes: \t \n
@@ -88,95 +88,95 @@ double string: supports newlines and escapes: \t \n
 grave string: supports newlines, but not escapes: \t \n
 `
 
-(( ## Identifiers ))
+{{ ## Identifiers }}
 
-((
+{{
 Identifiers have C-like restrictions: only US ASCII Latin alphanumerics,
 starting with a letter. There are NO RESERVED KEYWORDS in this notation.
 
 None of these have any special meaning.
-))
+}}
 arbitrary_ident true false nil self
 
-(( ## Operators ))
+{{ ## Operators }}
 
-((
+{{
 Any of these symbols, in any combination, are considered an operator. When not
 separated by a space, they combine into another, different, operator. Any
 combination, of any length, is allowed.
-))
+}}
 ~ ! @ # $ % ^ & * : < > . ? / \ | = + -
 ~! @# $% ^& *: <> .? /\ |= +-
 
-((
+{{
 Operators don't have to be separated from other forms by whitespace:
-))
+}}
 ident.ident.ident
 10+20
 
-((
+{{
 This notation is biased towards treating operators as functions. It doesn't
 define operator precedence and doen't support parentheses for grouping. See the
 section on calling convention below.
-))
-+{10 20 30}
-<{10 20}
->{30 40}
-not{false}
-and{true or{true false}}
+}}
++(10 20 30)
+<(10 20)
+>(30 40)
+not(false)
+and(true or(true false))
 
-(( ## Blocks ))
+{{ ## Blocks }}
 
-((
-Blocks of code are enclosed in braces: {}. Braces are used for sequences,
+{{
+Blocks of code are enclosed in parens: (). Parens are used for sequences,
 grouping, function calls, type literals, other special forms. No other
-delimiters are supported by the parser; [] () would produce a syntax error.
-))
+delimiters are supported by the parser; [] {} would produce a syntax error.
+}}
 
-{}
-{{} {}}
-{10 "20"}
-{10 {"20" 30}}
+()
+(() ())
+(10 "20")
+(10 ("20" 30))
 
-(( ## Calling ))
+{{ ## Calling }}
 
-((
+{{
 By convention, anything followed by a block represents a "call": function call,
 operator call, literal constructor, macro, any other special form.
 
 In a typed language defined in terms of this notation, generic types would be
 instantiated into concrete types by using the same "call" notation. See below.
-))
+}}
 
-(( Function call ))
-one{10 "20"}
+{{ Function call }}
+one(10 "20")
 
-(( Method call ))
-one.two.three{10 "20"}
+{{ Method call }}
+one.two.three(10 "20")
 
-(( Operator call ))
-+{10 20 30}
+{{ Operator call }}
++(10 20 30)
 
-(( Constructor literal ))
-StringDict{"key0" "value0" "key1" "value1"}
+{{ Constructor literal }}
+StringDict("key0" "value0" "key1" "value1")
 
-(( Generic type instantiation (the result is a type) ))
-Dict{String Int}
+{{ Generic type instantiation (the result is a type) }}
+Dict(String Int)
 
-(( Type instantiation -> constructor literal ))
-Dict{String String}{"key0" "value0" "key1" "value1"}
+{{ Type instantiation -> constructor literal }}
+Dict(String String)("key0" "value0" "key1" "value1")
 
-((
+{{
 DSL writers are free to use the Lisp-style calling convention, where the
-"callable" is the first element in braces. However, we recommend the previously
-mentioned outside-braces convention.
-))
-{some_func 10 "20" {other_func 30 "40"}}
-{+ 10 20 30}
+"callable" is the first element in parens. However, we recommend the previously
+mentioned outside-parens convention.
+}}
+(some_func 10 "20" (other_func 30 "40"))
+(+ 10 20 30)
 
-(( ## Serialization and JSON ))
+{{ ## Serialization and JSON }}
 
-((
+{{
 This notation can represent arbitrary data. However, the base level is not
 directly interchangeable with JSON because it lacks dicts.
 
@@ -185,20 +185,20 @@ This allows a much richer set of types compared to JSON. In this sense, our
 notation is closer to XML than JSON. But compared to XML, it's MUCH easier to
 write and read, and has a richer set of primitive building blocks, not just
 strings.
-))
+}}
 
-Dict{"key0" 123 "key1" 456 "key2" 789}
+Dict("key0" 123 "key1" 456 "key2" 789)
 
-Set{123 456 789}
+Set(123 456 789)
 
-Time{"1234-12-34T01:02:03Z"}
+Time("1234-12-34T01:02:03Z")
 
-html{
-  document{
-    {attr0 "value0" attr1 123}
-    "custom-element"{
-      {attr2 "value2" "data-attr" 456}
-      span{"hello world"}
-    }
-  }
-}
+html(
+  document(
+    (attr0 "value0" attr1 123)
+    "custom-element"(
+      (attr2 "value2" "data-attr" 456)
+      span("hello world")
+    )
+  )
+)

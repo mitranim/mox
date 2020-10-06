@@ -16,7 +16,7 @@ The syntax has two levels:
 
 ## Inspiration
 
-In no particular order: Clojure and other Lisps, Erlang, Go, Rust, and more.
+In no particular order: Clojure and other Lisps, Erlang, Go, Haskell, Rust, and more.
 
 ## Semantics
 
@@ -26,9 +26,9 @@ This repo is dedicated to syntax. Language semantics are mentioned only where re
 
 Syntax and conventions are designed using _objective_ metrics: less thinking, less typing, fewer typing errors, easy-to-modify code.
 
-Only one delimiter (`{}`) → less thinking, easier typing.
+Only one delimiter (`()`) → less thinking, easier typing.
 
-No punctuation → less thinking, less typing, fewer errors, easier to modify.
+No unnecessary punctuation → less thinking, less typing, fewer errors, easier to modify.
 
 Explicit delimiters → easier to modify, because of special editor support for delimiters.
 
@@ -37,3 +37,5 @@ Placing delimiters on separate lines → easier to modify intermediary code.
 Only prefix notation → less thinking, no infix precedence errors.
 
 Simple universal structure → better for DSLs.
+
+Choice of `()` over `{}` `[]`: characters are simpler, easier to write by hand.

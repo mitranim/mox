@@ -1,55 +1,55 @@
-create_type{
+create_type(
   ident_type
-  enum{
+  enum(
     "email_login"
     "email_change"
     "facebook"
     "google"
-  }
-}
+  )
+)
 
-create_table{idents
-  {id                    uuid       {primary_key default{gen_random_uuid{}}}
-  {type                  ident_type {not_null}}
-  {person_id             uuid       {null unique references{persons} on_update{cascade} on_delete{cascade}}}
-  {email                 email      {null}}
-  {external_id           text       {null}}
-  {external_profile_json jsonb      {null}}
-  {oauth_access_token    short_text {not_null check{<>{oauth_access_token ""}}}}
-  {oauth_refresh_token   short_text {not_null check{<>{oauth_refresh_token ""}}}}
+create_table(idents
+  (id                    uuid       (primary_key default(gen_random_uuid()))
+  (type                  ident_type (not_null))
+  (person_id             uuid       (null unique references(persons) on_update(cascade) on_delete(cascade)))
+  (email                 email      (null))
+  (external_id           text       (null))
+  (external_profile_json jsonb      (null))
+  (oauth_access_token    short_text (not_null check(<>(oauth_access_token ""))))
+  (oauth_refresh_token   short_text (not_null check(<>(oauth_refresh_token ""))))
 
-  constraint{`db.constraint._`
-    check{
-      case{type
-        "email_login" and{
-          is_null     {person_id}
-          is_not_null {email}
-          is_null     {external_id}
-          is_null     {external_profile_json}
-       }
-        "email_change" and{
-          is_not_null {person_id}
-          is_not_null {email}
-          is_null     {external_id}
-          is_null     {external_profile_json}
-       }
-        "facebook" and{
-          is_not_null {person_id}
-          is_null     {email}
-          is_not_null {external_id}
-          is_not_null {external_profile_json}
-       }
-        "google" and{
-          is_not_null {person_id}
-          is_null     {email}
-          is_not_null {external_id}
-          is_not_null {external_profile_json}
-       }
-     }
-   }
- }
-}
+  constraint(`db.constraint._`
+    check(
+      case(type
+        "email_login" and(
+          is_null     (person_id)
+          is_not_null (email)
+          is_null     (external_id)
+          is_null     (external_profile_json)
+       )
+        "email_change" and(
+          is_not_null (person_id)
+          is_not_null (email)
+          is_null     (external_id)
+          is_null     (external_profile_json)
+       )
+        "facebook" and(
+          is_not_null (person_id)
+          is_null     (email)
+          is_not_null (external_id)
+          is_not_null (external_profile_json)
+       )
+        "google" and(
+          is_not_null (person_id)
+          is_null     (email)
+          is_not_null (external_id)
+          is_not_null (external_profile_json)
+       )
+     )
+   )
+ )
+)
 
-create_unique_index{`` idents{person_id}   where{in{type{"facebook" "google"}}}}
-create_unique_index{`` idents{external_id} where{=={type "facebook"}}}
-create_unique_index{`` idents{external_id} where{=={type "google"}}}
+create_unique_index(`` idents(person_id)   where(in(type("facebook" "google"))))
+create_unique_index(`` idents(external_id) where(==(type "facebook")))
+create_unique_index(`` idents(external_id) where(==(type "google")))
