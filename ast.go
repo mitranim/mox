@@ -80,8 +80,14 @@ func (self *Parser) PopNode() (_ Node, err error) {
 		return self.PopWhitespace()
 	case self.Next(CommentStart):
 		return self.PopComment()
+	case self.Next(`0b`):
+		return self.PopNumberBinary()
+	case self.Next(`0o`):
+		return self.PopNumberOctal()
+	case self.Next(`0x`):
+		return self.PopNumberHexadecimal()
 	case self.NextCharIn(charMapDigitsDecimal):
-		return self.PopNumber()
+		return self.PopNumberDecimal()
 	case self.NextCharIn(charMapIdentifierStart):
 		return self.PopIdentifier()
 	case self.NextCharIn(charMapOperator):
@@ -143,61 +149,50 @@ func (self *Parser) PopComment() (NodeComment, error) {
 	return "", self.Error(fmt.Errorf(`expected closing %q, found unexpected EOF`, CommentEnd))
 }
 
-func (self *Parser) PopNumber() (NodeNumber, error) {
-	switch {
-	case self.Next(`0b`):
-		return self.PopNumberBinary()
-	case self.Next(`0o`):
-		return self.PopNumberOctal()
-	case self.Next(`0x`):
-		return self.PopNumberHexadecimal()
-	default:
-		return self.PopNumberDecimal()
-	}
-}
-
 func (self *Parser) PopNumberBinary() (NodeNumber, error) {
-	return self.popIntegerWithBase(`0b`, charMapDigitsBinary)
+	return self.popFloatWithPrefix(`0b`, charMapDigitsBinary)
 }
 
 func (self *Parser) PopNumberOctal() (NodeNumber, error) {
-	return self.popIntegerWithBase(`0o`, charMapDigitsOctal)
+	return self.popFloatWithPrefix(`0o`, charMapDigitsOctal)
 }
 
 func (self *Parser) PopNumberHexadecimal() (NodeNumber, error) {
-	return self.popIntegerWithBase(`0x`, charMapDigitsHexadecimal)
+	return self.popFloatWithPrefix(`0x`, charMapDigitsHexadecimal)
 }
 
-func (self *Parser) popIntegerWithBase(prefix string, charMap []bool) (NodeNumber, error) {
+func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
+	return self.popFloat(charMapDigitsDecimal)
+}
+
+func (self *Parser) popFloatWithPrefix(prefix string, charMap []bool) (NodeNumber, error) {
 	if !self.Next(prefix) {
 		return "", self.Error(fmt.Errorf(`expected opening %q, found %q`, prefix, self.Preview()))
 	}
 
-	start := self.Cursor
 	self.Advance(prefix)
-	for self.NextCharIn(charMap) {
-		self.AdvanceNextChar()
-	}
 
-	node := NodeNumber(self.From(start))
-	if !(len(node) > 2) {
-		return node, self.Error(fmt.Errorf(`expected at least one digit, found %q`, self.Preview()))
+	num, err := self.popFloat(charMap)
+	if err != nil {
+		return "", err
 	}
-	return node, nil
+	return NodeNumber(prefix) + num, nil
 }
 
-// Placeholder implementation without exponents.
-func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
+func (self *Parser) popFloat(charMap []bool) (NodeNumber, error) {
 	start := self.Cursor
 
-	if !self.NextCharIn(charMapDigitsDecimal) {
-		return "", self.Error(fmt.Errorf(`expected digit, found %q`, self.Preview()))
+	if !self.NextCharIn(charMap) {
+		return "", self.Error(fmt.Errorf(`expected one of %q, found %q`, charMapString(charMap), self.Preview()))
 	}
 
 	for self.More() {
-		if self.NextCharIn(charMapDigitsDecimal) {
+		if self.NextCharIn(charMap) {
 			self.AdvanceNextChar()
 			continue
+		}
+		if self.NextCharIn(charMapIdentifier) {
+			return "", self.Error(fmt.Errorf(`expected one of %q, found %q`, charMapString(charMap), self.Preview()))
 		}
 
 		if self.NextChar('.') {
@@ -210,18 +205,21 @@ func (self *Parser) PopNumberDecimal() (NodeNumber, error) {
 	goto end
 
 fraction:
-	if !self.NextCharIn(charMapDigitsDecimal) {
-		return "", self.Error(fmt.Errorf(`expected digit, found %q`, self.Preview()))
+	if !self.NextCharIn(charMap) {
+		return "", self.Error(fmt.Errorf(`expected one of %q, found %q`, charMapString(charMap), self.Preview()))
 	}
-	for self.NextCharIn(charMapDigitsDecimal) {
+	for self.NextCharIn(charMap) {
 		self.AdvanceNextChar()
+	}
+	if self.NextCharIn(charMapIdentifier) {
+		return "", self.Error(fmt.Errorf(`expected one of %q, found %q`, charMapString(charMap), self.Preview()))
 	}
 
 end:
 	node := NodeNumber(self.From(start))
 	// Internal sanity check.
 	if !(len(node) > 0) {
-		return node, self.Error(fmt.Errorf(`expected at least one digit, found %q`, self.Preview()))
+		return node, self.Error(fmt.Errorf(`expected one of %q, found %q`, charMapString(charMap), self.Preview()))
 	}
 	return node, nil
 }
@@ -469,21 +467,21 @@ func isNumber(node Node) bool {
 
 func stringToBytesAlloc(input string) []byte { return []byte(input) }
 
-var charMapWhitespace = charMap(" \n\r\t\v")
-var charMapOperator = charMap(`~!@#$%^&*:<>.?/\=+-`)
-var charMapIdentifierStart = charMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_`)
-var charMapIdentifier = charMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789`)
-var charMapDigitsBinary = charMap(`01`)
-var charMapDigitsOctal = charMap(`01234567`)
-var charMapDigitsDecimal = charMap(`0123456789`)
-var charMapDigitsHexadecimal = charMap(`0123456789abcdef`)
+var charMapWhitespace = stringCharMap(" \n\r\t\v")
+var charMapOperator = stringCharMap(`~!@#$%^&*:<>.?/\=+-`)
+var charMapIdentifierStart = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_`)
+var charMapIdentifier = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789`)
+var charMapDigitsBinary = stringCharMap(`01`)
+var charMapDigitsOctal = stringCharMap(`01234567`)
+var charMapDigitsDecimal = stringCharMap(`0123456789`)
+var charMapDigitsHexadecimal = stringCharMap(`0123456789abcdef`)
 
 func isCharIn(chars []bool, char rune) bool {
 	index := int(char)
 	return index < len(chars) && chars[index]
 }
 
-func charMap(str string) []bool {
+func stringCharMap(str string) []bool {
 	var max int
 	for _, char := range str {
 		if int(char) > max {
@@ -496,4 +494,14 @@ func charMap(str string) []bool {
 		charMap[int(char)] = true
 	}
 	return charMap
+}
+
+func charMapString(charMap []bool) string {
+	var buf strings.Builder
+	for char, ok := range charMap {
+		if ok {
+			buf.WriteRune(rune(char))
+		}
+	}
+	return buf.String()
 }
