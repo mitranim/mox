@@ -28,10 +28,7 @@ def replace_in_region(view, edit, region, repl):
 class mox_swap_parens_braces(sublime_plugin.TextCommand):
     # def is_enabled(self):
     #     view = self.view
-    #     return (
-    #         view.score_selector(0, 'source.mox') > 0 or
-    #         view.score_selector(0, 'source.nox') > 0
-    #     )
+    #     return view.score_selector(0, 'source.mox') > 0
 
     def run(self, edit):
         view = self.view

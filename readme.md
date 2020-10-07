@@ -34,8 +34,8 @@ Explicit delimiters → easier to modify, because of special editor support for 
 
 Placing delimiters on separate lines → easier to modify intermediary code.
 
-Only prefix notation → less thinking, no infix precedence errors.
+Only prefix calls → less thinking, no infix precedence errors.
 
 Simple universal structure → better for DSLs.
 
-Choice of `()` over `{}` `[]`: characters are simpler, easier to write by hand.
+Choice of `()` over `{}` and `[]`: simpler characters, easier to write by hand.

@@ -117,7 +117,7 @@ ident.ident.ident
 {{
 This notation is biased towards treating operators as functions. It doesn't
 define operator precedence and doen't support parentheses for grouping. See the
-section on calling convention below.
+section on calling conventions below.
 }}
 +(10 20 30)
 <(10 20)
@@ -146,6 +146,9 @@ operator call, literal constructor, macro, any other special form.
 
 In a typed language defined in terms of this notation, generic types would be
 instantiated into concrete types by using the same "call" notation. See below.
+
+Syntax highlighting for this data notation should NOT highlight "calls", because
+DSLs are allowed to pick their own call convention.
 }}
 
 {{ Function call }}
@@ -157,19 +160,19 @@ one.two.three(10 "20")
 {{ Operator call }}
 +(10 20 30)
 
-{{ Constructor literal }}
-StringDict("key0" "value0" "key1" "value1")
+{{ Literal constructor }}
+String_dict("key0" "value0" "key1" "value1")
 
 {{ Generic type instantiation (the result is a type) }}
 Dict(String Int)
 
-{{ Type instantiation -> constructor literal }}
+{{ Type instantiation -> literal constructor }}
 Dict(String String)("key0" "value0" "key1" "value1")
 
 {{
-DSL writers are free to use the Lisp-style calling convention, where the
-"callable" is the first element in parens. However, we recommend the previously
-mentioned outside-parens convention.
+DSL writers are free to use the Lisp-style inside-parens calling convention,
+where the "callable" is the first element in parens. However, we recommend the
+previously mentioned outside-parens convention.
 }}
 (some_func 10 "20" (other_func 30 "40"))
 (+ 10 20 30)
@@ -195,10 +198,16 @@ Time("1234-12-34T01:02:03Z")
 
 html(
   document(
-    (attr0 "value0" attr1 123)
-    "custom-element"(
-      (attr2 "value2" "data-attr" 456)
-      span("hello world")
+    ::(attr0 "value0" attr1 123)
+
+    span(
+      ::(attr2 "value2" "data-attr" 456)
+
+      namespace:element("text node")
+
+      namespace:"custom-element"("text node")
+
+      "namespace:custom-element"("text node")
     )
   )
 )

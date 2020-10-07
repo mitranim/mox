@@ -2,7 +2,7 @@
 <plist version="1.0">
 <dict>
   <key>scope</key>
-  <string>source.mox, source.nox</string>
+  <string>source.mox</string>
   <key>settings</key>
   <dict>
     <key>shellVariables</key>
@@ -18,6 +18,12 @@
         <string>TM_COMMENT_END</string>
         <key>value</key>
         <string> }}</string>
+      </dict>
+      <dict>
+        <key>name</key>
+        <string>TM_COMMENT_DISABLE_INDENT</string>
+        <key>value</key>
+        <string>yes</string>
       </dict>
     </array>
   </dict>

@@ -24,19 +24,20 @@ instantiating a generic type, literal constructor, type cast, type conversion,
 or one of various special forms. See examples in other sections.
 }}
 
-some_ident(
-  some_val.some_method(10 "20")
-  block(
-    some_ident(some_ident(10 "20") 30)
-    some_ident(10 "20")
+(some_ident
+  (some_val.some_method 10 "20")
+  (block
+    (some_ident (some_ident 10 "20") 30)
+    (some_ident 10 "20")
   )
 )
 
-some_val.some_method().some_method().some_method()
+{{ Method chaining is inconvenient, and discouraged. }}
+(((some_val.some_method).some_method).some_method)
 
-String_dict("key0" "value0" "key1" "value1")
+(String_dict "key0" "value0" "key1" "value1")
 
-Array(16 Int)
+(Array 16 Int)
 
 {{
 To use a block as an expression, we provide the special form `block`. It creates
@@ -44,11 +45,11 @@ a subscope, contains multiple statements, and returns its last expression.
 
 This is a function call with a single argument.
 }}
-fmt.println(
+(fmt.println
   {{ This block is an expression. }}
-  block(
+  (block
     {{ Side effect. }}
-    fmt.println("hello world")
+    (fmt.println "hello world")
     {{ Return value. }}
     "20"
   )
@@ -81,8 +82,8 @@ Json_decoder
 {{
 Boolean variables, functions, struct fields should start with `is_`:
 }}
-var(is_deleted true)
-fn(is_deleted(val) val.is_deleted)
+(var is_deleted true)
+(fn is_deleted (val) val.is_deleted)
 
 {{ ## Calling }}
 
@@ -90,23 +91,23 @@ fn(is_deleted(val) val.is_deleted)
 An identifier followed by a block may invoke a function, a macro, a special
 syntactic form, or a type conversion.
 }}
-some_func(arg0 arg1 ...)
-some_ident.some_method(arg0 arg1 ...)
-some_macro(expressions)
-Some_type(some_val)
+(some_func arg0 arg1 ...)
+(some_ident.some_method arg0 arg1 ...)
+(some_macro expressions)
+(Some_type some_val)
 
 {{
 Function calls, operators, boolean expressions, everything uses the prefix
 notation with a block:
 }}
-+(one two)
-and(one or(two three))
+(+ one two)
+(and one (or two three))
 
 {{
 The dot property accessor is the only infix operator:
 }}
 one.two.three
-some_func().some_method().some_method().some_field
+(((some_func).some_method).some_method).some_field
 
 {{
 Note on expressions. When converting the data notation AST to the language AST,
@@ -126,37 +127,37 @@ than as an expression, is added to the scope under that name.
 }}
 
 {{ Empty function. }}
-fn(())
+(fn ())
 
-fn((a b) +(a b))
+(fn a (b) (+ a b))
 
-fn(add(a b) +(a b))
+(fn add (a b) (+ a b))
 
-fn(sum(coll) coll.fold(0 fn((a b) +(a b))))
+(fn sum (coll) (coll.fold 0 (fn (a b) (+ a b))))
 
 {{
 `func` has no type inference. Parameter and return types must be fully
 specified. The function can optionally be named. A named function used as a
 statement, rather than as an expression, is added to the scope under that name.
 
-The return type must be specified after parameters, enclosed in `Ret(...)`.
+The return type must be specified after parameters, enclosed in `ret(...)`.
 }}
 
 {{ Empty function. }}
-func(())
+(func ())
 
-func((a T b T) Ret(T) +(a b))
+(func (a T b T) (Ret T) (+ a b))
 
-func(
-  add(a T b T) Ret(T)
-  +(a b)
+(func add
+  (a T b T) (Ret T)
+  (+ a b)
 )
 
-func(
-  opt_add(a Opt(T) b Opt(T)) Ret(Opt(T))
-  match(
-    when(a Opt.Some(T) b Opt.Some(T)) then Opt.Some(+(a b))
-    else Opt.None()
+(func opt_add
+  (a (Opt T) b (Opt T)) (Ret (Opt T))
+  (match
+    when (a (Opt.Some T) b (Opt.Some T)) then (Opt.Some (+ a b))
+    else (Opt.None)
   )
 )
 
@@ -165,36 +166,36 @@ The syntax for method definitions is still in flux and needs more careful
 consideration:
 }}
 
-func(
-  some_method(self Some_type param0 Other_type) Ret(Another_type)
-  self.other_method()
-  self.other_method()
+(func some_method
+  (self Some_type param0 Other_type) (Ret Another_type)
+  (self.other_method)
+  (self.other_method)
 )
 
-func(
-  some_method(self Ref(Some_type) param0 Other_type) Ret(Another_type)
-  self.other_method()
-  self.other_method()
+(func some_method
+  (self (Ref Some_type) param0 Other_type) (Ret Another_type)
+  (self.other_method)
+  (self.other_method)
 )
 
-func(
-  Some_type.some_method(param0 Other_type) Ret(Another_type)
-  self.other_method()
-  self.other_method()
+(func Some_type.some_method
+  (param0 Other_type) (Ret Another_type)
+  (self.other_method)
+  (self.other_method)
 )
 
-func(
-  Ref(Some_type).some_method(param0 Other_type) Ret(Another_type)
-  self.other_method()
-  self.other_method()
+(func (Ref Some_type).some_method
+  (param0 Other_type) (Ret Another_type)
+  (self.other_method)
+  (self.other_method)
 )
 
 {{
 Neither `fn` nor `func` is a reserved keyword, as there are NO reserved
 keywords. They can be used for variables, functions, struct fields, and more.
 }}
-var(func func(()))
-type(Struct_with_func struct(func Func()))
+(var func (func ()))
+(type Struct_with_func (struct func (Func ())))
 
 {{ ## Type Literals }}
 
@@ -203,7 +204,7 @@ Some_type
 some_module.Some_type
 
 {{ Anonymous struct type. }}
-struct(
+(struct
   field0 Type0
   field1 Type1
 )
@@ -211,17 +212,17 @@ struct(
 {{
 Generic types specify their "parameter types" in ().
 }}
-Tuple(Some_type Some_type Some_type)
-Array(16 Byte)
-Slice(Byte)
-Slice(Slice(Byte))
-Dict(String Some_type)
-Dict(Array(16 Byte) Dict(String Slice(Byte)))
+(Tuple Some_type Some_type Some_type)
+(Array 16 Byte)
+(Slice Byte)
+(Slice (Slice Byte))
+(Dict String Some_type)
+(Dict (Array 16 Byte) (Dict String (Slice Byte)))
 
 {{
 Variant type / tagged union type.
 }}
-variant(
+(variant
   Variant0 Some_type
   Variant1 Other_type
 )
@@ -229,7 +230,7 @@ variant(
 {{
 Function type.
 }}
-Func((Type0 Type1) Type2)
+(Func (Type0 Type1) Type2)
 
 {{ ## Type Definitions }}
 
@@ -237,10 +238,12 @@ Func((Type0 Type1) Type2)
 `type` defines a named type. It must begin with a type name, immediately
 followed by a type literal.
 }}
-type(
-  Parse_state struct(
-    source String
+(type
+  Parse_state (struct
+    string String
+    trail  Int
     cursor Int
+    ast    Nodes
   )
 )
 
@@ -249,29 +252,29 @@ The right hand side of a type definition can be any type, either anonymous or
 named. The defined type will have the same underlying memory structure, field
 names, and so on.
 }}
-type(Some_type Other_type)
+(type Some_type Other_type)
 
 {{
 Generic types specify their parameters in ().
 }}
-type(
-  Opt(T) variant(
-    Opt.Some Tuple(T)
-    Opt.None Tuple()
+(type (Opt T)
+  (variant
+    Some (Tuple T)
+    None (Tuple)
   )
 )
 
 {{
 Generic types can specify conditions for parameter types.
 }}
-type(
-  Either(A B)
-  variant(
+(type
+  (Res A B)
+  (variant
     Ok A
     Err B
   )
-  where(
-    B(Error)
+  (where
+    B Error
   )
 )
 
@@ -280,8 +283,8 @@ type(
 used for variables, functions, struct fields, and more. Syntax highlighting must
 be contextual.
 }}
-var(type "some_value")
-type(Some_type struct(type String))
+(var type "some_value")
+(type Some_type (struct type String))
 
 {{
 We can associate metadata with each type, and with each field of each type.
@@ -290,34 +293,34 @@ opt-in.
 
 The syntax in this example is general but verbose. This is fixable.
 }}
-type(
-  Some_struct struct(
+(type
+  Some_struct (struct
     field_one   String
     field_two   Int8
     field_three Bool
     lock        sync.Mutex
   )
-  meta(
-    field_one   Dict("json" "fieldOne"   "db" "field_one")
-    field_two   Dict("json" "fieldTwo"   "db" "field_two")
-    field_three Dict("json" "fieldThree" "db" "field_three")
-    lock        Dict("private" true)
+  (meta
+    field_one   (Dict "json" "fieldOne"   "db" "field_one")
+    field_two   (Dict "json" "fieldTwo"   "db" "field_two")
+    field_three (Dict "json" "fieldThree" "db" "field_three")
+    lock        (Dict "private" true)
   )
 )
 
 {{ ## Instantiating Types }}
 
-Some_slice(10 20 30)
+(Some_slice 10 20 30)
 
-Slice(Int)(10 20 30)
+((Slice Int) 10 20 30)
 
-Some_dict(
+(Some_dict
   "one"   10
   "two"   20
   "three" 30
 )
 
-Some_struct(
+(Some_struct
   one   10
   two   20
   three 30
@@ -344,10 +347,10 @@ forms.
 }}
 
 {{ Bad }}
-special_fn(fn_name() ())
+(special_fn fn_name (params) code)
 
 {{ Good }}
-special(fn(fn_name() ()))
+(special (fn fn_name (params) code))
 
 {{
 Example SQL generation with a macro. This hypothetical `sql_query` macro
@@ -356,48 +359,48 @@ Arguments are replaced with positional placeholders and added to the argument
 slice. The returned object contains text and arguments.
 }}
 
-var(table_name "persons")
+(var table_name "persons")
 
-var(id random_uuid())
+(var id (random_uuid))
 
-sql_query(`
+(sql_query `
   select col0, col1, col2
-  from ` text(table_name) `
+  from ` (text table_name) `
   where
   id = ` id ` and
   not is_deleted
 `)
 
 {{ Type returned by `sql_query`. }}
-type(
-  Sql_query struct(
+(type
+  Sql_query (struct
     text String
-    args Slice(Any)
+    args (Slice Any)
   )
 )
 
 {{
-Example XML generation with a hypothetical `xml` macro. Uses unprefixed () for
+Example XML generation with a hypothetical `xml` macro. Uses @ for
 interpolation. The macro could be defined to return an AST or print a string.
 }}
-xml(
-  html(
-    document(
-      div(
+(xml
+  (html
+    (document
+      (div
         {{ Attributes }}
-        ::(attr0 "value0" attr1 "value1")
+        (:: attr0 "value0" attr1 "value1")
 
         {{ Nested element with a text node }}
-        span("text")
+        (span "text")
 
         {{ Text node }}
         "text"
 
         {{ Interpolation: variable }}
-        (var0)
+        @var0
 
         {{ Interpolation: arbitry expression (function or macro) }}
-        (str(var0 var1 var2))
+        @(str var0 var1 var2)
       )
     )
   )
@@ -426,16 +429,16 @@ _
 }}
 
 {{ Example rope string type used below. }}
-type(
-  Rope_string struct(
-    chunks Slice(Rope_chunk)
+(type
+  Rope_string (struct
+    chunks (Slice Rope_chunk)
   )
 )
 
-type(
-  Rope_chunk struct(
+(type
+  Rope_chunk (struct
     len   Int
-    chars Array(1024 Char)
+    chars (Array 1024 Char)
   )
 )
 
@@ -455,33 +458,31 @@ constructor of that type, the part in (), omitting the type identifier.
 
 Example input:
 
-    Rope_string("hello world")
+    (Rope_string "hello world")
 
 Example output, if chunk size was 4 rather than 1024:
 
-    Rope_string(
-      chunks Slice(
-        Rope_chunk(len 4 chars Array(4 Char)(104 101 108 108))
-        Rope_chunk(len 4 chars Array(4 Char)(111 32 119 111))
-        Rope_chunk(len 3 chars Array(4 Char)(114 108 100))
+    (Rope_string
+      chunks (Slice
+        (Rope_chunk len 4 chars (Array 4 Char)(104 101 108 108))
+        (Rope_chunk len 4 chars (Array 4 Char)(111 32 119 111))
+        (Rope_chunk len 3 chars (Array 4 Char)(114 108 100))
       )
     )
 
 The conversion is performed at compile time, at no runtime cost.
 }}
-macro_literal_string(fn(
-  Rope_string(literal_string_content)
+(macro_literal_string (fn Rope_string (literal_string_content)
+  (var chars (Slice Char) (string_to_chars literal_string_content))
 
-  var(chars Slice(Char) string_to_chars(literal_string_content))
+  (var char_chunks (Slice (Slice Char)) (chars.split_by_length 1024))
 
-  var(char_chunks Slice(Slice(Char)) chars.split_by_length(1024))
-
-  quote((
-    chunks unquote(char_chunks.map(fn((chars)
-      quote(
-        Rope_chunk(
-          len unquote(Ast_int(chars.len))
-          chars unquote(Ast_block(chars))
+  (quote (
+    chunks (unquote (char_chunks.map (fn (chars)
+      (quote
+        (Rope_chunk
+          len (unquote (Ast_int chars.len))
+          chars (unquote (Ast_block chars))
         )
       )
     )))
@@ -505,9 +506,9 @@ with type inference and one without.
 
 This is a void statement that doesn't return a value.
 }}
-var(some_ident Some_type)
-var(some_ident           "some_value")
-var(some_ident Some_type "some_value")
+(var some_ident Some_type)
+(var some_ident           "some_value")
+(var some_ident Some_type "some_value")
 
 {{
 `const` declares a constant value. Unlike variables, constants are statically
@@ -521,8 +522,8 @@ one with type inference and one without.
 
 This is a void statement that doesn't return a value.
 }}
-const(some_ident           "some_value")
-const(some_ident Some_type "some_value")
+(const some_ident           "some_value")
+(const some_ident Some_type "some_value")
 
 {{
 `set` reassigns a variable's value. The variable must have been previously
@@ -536,4 +537,4 @@ necessitating an assignment-only form.
 
 This is a void statement that doesn't return a value.
 }}
-set(some_ident "other_value")
+(set some_ident "other_value")

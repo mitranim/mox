@@ -6,8 +6,9 @@ file_extensions:
 scope: source.mox
 
 variables:
-  comment_start: \{\{
-  comment_end: \}\}
+  # comment_line_start: ;;
+  comment_block_start: \{\{
+  comment_block_end: \}\}
   block_start: \(
   block_end: \)
   ident: \b[[:alpha:]_][[:alnum:]_]*\b
@@ -25,7 +26,7 @@ contexts:
     - include: match-strings
     - include: match-idents
     - include: match-operators
-    - include: match-punctuation
+    - include: match-blocks
 
   match-numbers:
     - include: match-floats
@@ -106,21 +107,35 @@ contexts:
           scope: punctuation.definition.string.end.mox
           pop: true
 
-  # TODO reconsider delimiters. Note that supporting nested comments requires
-  # opening and closing delimiters to differ.
   match-comments:
-    - match: '({{comment_start}})\s*({{heading}})'
+    # - include: match-comments-line
+    - include: match-comments-block
+
+  # match-comments-line:
+  #   - match: '{{comment_line_start}}'
+  #     scope: punctuation.definition.comment.mox
+  #     push: pop-comment-line
+
+  pop-comment-line:
+    - meta_scope: comment.line.mox
+    - match: '{{heading}}'
+      scope: markup.heading.mox
+    - match: $\n?
+      pop: true
+
+  match-comments-block:
+    - match: '({{comment_block_start}})\s*({{heading}})'
       captures:
         1: punctuation.definition.comment.begin.mox
         2: markup.heading.mox
-      push: pop-comment
-    - match: '{{comment_start}}'
+      push: pop-comment-block
+    - match: '{{comment_block_start}}'
       scope: punctuation.definition.comment.begin.mox
-      push: pop-comment
+      push: pop-comment-block
 
-  pop-comment:
+  pop-comment-block:
     - meta_scope: comment.block.mox
-    - match: '{{comment_end}}'
+    - match: '{{comment_block_end}}'
       scope: punctuation.definition.comment.end.mox
       pop: true
     - match: '^({{heading}})'
@@ -136,10 +151,7 @@ contexts:
     - match: '[~!@#$%^&*:<>.?/\\|=+-]+'
       scope: keyword.operator.mox
 
-  match-punctuation:
-    - include: match-block
-
-  match-block:
+  match-blocks:
     - match: '{{block_start}}'
       scope: punctuation.section.block.begin.mox
       push:

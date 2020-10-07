@@ -2,8 +2,8 @@
 ---
 # See http://www.sublimetext.com/docs/3/syntax.html
 file_extensions:
-  - nox
-scope: source.mox.nox
+  - lox
+scope: source.mox.lox
 
 variables:
   # comment_line_start: ;;
@@ -56,16 +56,16 @@ contexts:
 
   match-floats-without-fraction:
     - match: \d+({{exponent}})\d+
-      scope: constant.numeric.float.mox.nox
+      scope: constant.numeric.float.mox.lox
       captures:
-        1: punctuation.separator.exponent.mox.nox
+        1: punctuation.separator.exponent.mox.lox
 
   match-floats-with-fraction:
     - match: \d+(\.)\d+(?:({{exponent}})\d+)?
-      scope: constant.numeric.float.mox.nox
+      scope: constant.numeric.float.mox.lox
       captures:
-        1: punctuation.separator.decimal.mox.nox
-        2: punctuation.separator.exponent.mox.nox
+        1: punctuation.separator.decimal.mox.lox
+        2: punctuation.separator.exponent.mox.lox
 
   match-integers:
     - include: match-integers-bin
@@ -97,7 +97,7 @@ contexts:
 
   match-chars:
     - match: \'[^']*'
-      scope: constant.character.mox.nox
+      scope: constant.character.mox.lox
 
   match-strings:
     - include: match-strings-double
@@ -105,24 +105,24 @@ contexts:
 
   match-strings-double:
     - match: '"'
-      scope: punctuation.definition.string.begin.mox.nox
+      scope: punctuation.definition.string.begin.mox.lox
       push:
         - meta_include_prototype: false
-        - meta_scope: string.quoted.double.mox.nox
+        - meta_scope: string.quoted.double.mox.lox
         - match: '"'
-          scope: punctuation.definition.string.end.mox.nox
+          scope: punctuation.definition.string.end.mox.lox
           pop: true
         - match: '{{char_escape}}'
-          scope: constant.character.escape.mox.nox
+          scope: constant.character.escape.mox.lox
 
   match-strings-grave:
     - match: '`'
-      scope: punctuation.definition.string.begin.mox.nox
+      scope: punctuation.definition.string.begin.mox.lox
       push:
         - meta_include_prototype: false
-        - meta_scope: string.quoted.other.mox.nox
+        - meta_scope: string.quoted.other.mox.lox
         - match: '`'
-          scope: punctuation.definition.string.end.mox.nox
+          scope: punctuation.definition.string.end.mox.lox
           pop: true
 
   match-comments:
@@ -165,7 +165,6 @@ contexts:
     - include: match-idents-consts-lang
     - include: match-idents-consts
     - include: match-idents-types
-    - include: match-idents-calls
     - include: match-idents-other
 
   match-idents-consts-lang:
@@ -175,44 +174,27 @@ contexts:
 
   match-bools:
     - match: \b(?:true|false)\b
-      scope: constant.language.mox.nox
+      scope: constant.language.mox.lox
 
   match-nil:
     - match: \bnil\b
-      scope: constant.language.mox.nox
+      scope: constant.language.mox.lox
 
   match-self:
     - match: '{{self}}'
-      scope: constant.language.mox.nox
+      scope: constant.language.mox.lox
 
   match-idents-consts:
     - match: '{{ident_const}}'
-      scope: variable.other.constant.mox.nox
+      scope: variable.other.constant.mox.lox
 
   match-idents-types:
     - match: '{{ident_type}}'
-      scope: storage.type.mox.nox
-
-  match-idents-calls:
-    - include: match-idents-calls-keywords
-    - include: match-idents-calls-other
-
-  match-idents-calls-keywords:
-    - include: match-fn
-    - include: match-func
-    - include: match-if
-    - include: match-case
-    - include: match-try
-    - include: match-ret
-    - include: match-type
-
-  match-idents-calls-other:
-    - match: '{{ident_any}}(?={{noise}}{{block_start}})'
-      scope: variable.function.mox.nox
+      scope: storage.type.mox.lox
 
   match-idents-other:
     - match: '{{ident_any}}'
-      scope: variable.other.mox.nox
+      scope: variable.other.mox.lox
 
   match-operators:
     - match: '[~!@#$%^&*:<>.?/\\|=+-]+'
@@ -220,31 +202,51 @@ contexts:
 
   match-blocks:
     - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      push:
-        - match: '{{block_end}}'
-          scope: punctuation.section.block.end.mox.nox
-          pop: true
-        - include: main
+      scope: punctuation.section.block.begin.mox.lox
+      push: pop-block-head
     - match: '{{block_end}}'
-      scope: punctuation.section.block.end.mox.nox invalid.illegal.mox.nox
+      scope: punctuation.section.block.end.mox.lox invalid.illegal.mox.lox
 
-  match-fn:
-    - match: \bfn\b(?={{noise}}{{block_start}})
-      scope: storage.type.keyword.function.mox.nox
-      push: pop-fn-0
+  pop-block-head:
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox.lox
+      pop: true
+    - include: match-block-head-keywords
+    - include: match-block-head-idents
+    - match: (?=\S)
+      set: pop-block-tail
 
-  pop-fn-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-fn-1
-    - include: pop-before-nonblank
+  pop-block-tail:
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox.lox
+      pop: true
+    - include: main
+
+  match-block-head-keywords:
+    - include: match-block-head-fn
+    - include: match-block-head-func
+    - include: match-block-head-if
+    - include: match-block-head-case
+    - include: match-block-head-try
+    - include: match-block-head-ret
+    - include: match-block-head-type
+
+  # Incomplete: doesn't account for infix dot.
+  match-block-head-idents:
+    - match: '{{ident_other}}'
+      scope: variable.function.mox.lox
+      set: pop-block-tail
+
+  match-block-head-fn:
+    - match: \bfn\b
+      scope: storage.type.keyword.function.mox.lox
+      set: pop-fn-0
 
   # Expecting maybe name, then params.
-  pop-fn-1:
+  pop-fn-0:
     - include: pop-on-block-end
     - match: '{{ident_any}}'
-      scope: entity.name.function.fn.mox.nox
+      scope: entity.name.function.fn.mox.lox
       set: pop-fn-2
     - match: (?={{block_start}})
       set: pop-fn-2
@@ -254,41 +256,35 @@ contexts:
   pop-fn-2:
     - include: pop-on-block-end
     - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
+      scope: punctuation.section.block.begin.mox.lox
       set: pop-fn-3
     - include: main
 
   # Params.
   pop-fn-3:
     - match: '{{block_end}}'
-      scope: punctuation.section.block.end.mox.nox
+      scope: punctuation.section.block.end.mox.lox
       set: pop-fn-4
     - match: \bself\b
-      scope: variable.parameter.mox.nox constant.language.mox.nox
+      scope: variable.parameter.mox.lox constant.language.mox.lox
     - match: '{{ident_other}}'
-      scope: variable.parameter.mox.nox
+      scope: variable.parameter.mox.lox
     - include: main
 
   pop-fn-4:
     - include: pop-on-block-end
     - include: main
 
-  match-func:
-    - match: \bfunc\b(?={{noise}}{{block_start}})
-      scope: storage.type.keyword.function.mox.nox
-      push: pop-func-0
-
-  pop-func-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-func-1
-    - include: pop-before-nonblank
+  match-block-head-func:
+    - match: \bfunc\b
+      scope: storage.type.keyword.function.mox.lox
+      set: pop-func-0
 
   # Expecting maybe name, then params.
-  pop-func-1:
+  pop-func-0:
     - include: pop-on-block-end
     - match: '{{ident_any}}'
-      scope: entity.name.function.func.mox.nox
+      scope: entity.name.function.func.mox.lox
       set: pop-func-2
     - match: (?={{block_start}})
       set: pop-func-2
@@ -298,101 +294,80 @@ contexts:
   pop-func-2:
     - include: pop-on-block-end
     - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
+      scope: punctuation.section.block.begin.mox.lox
       set: pop-func-3
     - include: main
 
   # Params.
   pop-func-3:
     - match: '{{block_end}}'
-      scope: punctuation.section.block.end.mox.nox
+      scope: punctuation.section.block.end.mox.lox
       set: pop-func-5
     - match: \bself\b
-      scope: variable.parameter.mox.nox constant.language.mox.nox
+      scope: variable.parameter.mox.lox constant.language.mox.lox
     - match: '{{ident_other}}'
-      scope: variable.parameter.mox.nox
+      scope: variable.parameter.mox.lox
     - include: main
 
   pop-func-5:
     - include: pop-on-block-end
     - include: main
 
-  match-if:
-    - match: \bif\b(?={{noise}}{{block_start}})
-      scope: keyword.control.conditional.if.mox.nox
-      push: pop-if-0
+  match-block-head-if:
+    - match: \bif\b
+      scope: keyword.control.conditional.if.mox.lox
+      set: pop-if-0
 
   pop-if-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-if-1
-    - include: pop-before-nonblank
-
-  pop-if-1:
     - include: pop-on-block-end
     - match: \b(?:then|elif|else)\b
-      scope: keyword.control.conditional.mox.nox
+      scope: keyword.control.conditional.mox.lox
     - include: main
 
-  match-case:
-    - match: \bcase\b(?={{noise}}{{block_start}})
-      scope: keyword.control.conditional.case.mox.nox
-      push: pop-case-0
+  match-block-head-case:
+    - match: \bcase\b
+      scope: keyword.control.conditional.case.mox.lox
+      set: pop-case-0
 
   pop-case-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-case-1
-    - include: pop-before-nonblank
-
-  pop-case-1:
     - include: pop-on-block-end
     - match: \b(?:when|then|else)\b
-      scope: keyword.control.conditional.mox.nox
+      scope: keyword.control.conditional.mox.lox
     - include: main
 
-  match-try:
-    - match: \btry\b(?={{noise}}{{block_start}})
-      scope: keyword.control.exception.try.mox.nox
-      push: pop-try-0
+  match-block-head-try:
+    - match: \btry\b
+      scope: keyword.control.exception.try.mox.lox
+      set: pop-try-0
 
   pop-try-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-try-1
-    - include: pop-before-nonblank
-
-  pop-try-1:
     - include: pop-on-block-end
     - match: \bcatch\b
-      scope: keyword.control.exception.catch.mox.nox
+      scope: keyword.control.exception.catch.mox.lox
     - match: \bfinally\b
-      scope: keyword.control.exception.finally.mox.nox
+      scope: keyword.control.exception.finally.mox.lox
     - include: main
 
-  match-ret:
-    - match: \bret\b(?={{noise}}{{block_start}})
-      scope: keyword.control.flow.return.mox.nox
+  match-block-head-ret:
+    - match: \bret\b
+      scope: keyword.control.flow.return.mox.lox
+      set: pop-block-tail
 
-  match-type:
-    - match: \btype\b(?={{noise}}{{block_start}})
-      scope: storage.type.keyword.type.mox.nox
-      push: pop-type-0
+  match-block-head-type:
+    - match: \btype\b
+      scope: storage.type.keyword.type.nox
+      set: pop-type-0
 
+  # Incomplete: should also allow a block starting with a type name.
+  # (Generic type instantiation.)
   pop-type-0:
-    - match: '{{block_start}}'
-      scope: punctuation.section.block.begin.mox.nox
-      set: pop-type-1
-    - include: pop-before-nonblank
-
-  pop-type-1:
     - include: pop-on-block-end
     - match: '{{ident_type}}'
-      scope: entity.name.type.mox.nox
-      set: pop-type-2
+      scope: entity.name.type.nox
+      set: pop-type-1
     - include: main
 
-  pop-type-2:
+  pop-type-1:
     - include: pop-on-block-end
     - include: main
 
@@ -402,5 +377,5 @@ contexts:
 
   pop-on-block-end:
     - match: '{{block_end}}'
-      scope: punctuation.section.block.end.mox.nox
+      scope: punctuation.section.block.end.mox.lox
       pop: true
