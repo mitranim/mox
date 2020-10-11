@@ -78,6 +78,9 @@ hard requirements are:
 Numbers must be parsed with unlimited precision, in order to support untyped
 numeric constants and "big number" literals. The AST must preserve the
 information required to print the number back exactly as it was written.
+
+Number literals don't include the `+` `-` signs. Those are implemented
+separately as unary operators.
 }}
 
 0b10    {{ Binary integers. }}
@@ -85,8 +88,6 @@ information required to print the number back exactly as it was written.
 0x123   {{ Hex integers. }}
 10      {{ Decimal integers. }}
 123.456 {{ Decimal floats. }}
-+10     {{ Positives. }}
--10     {{ Negatives. }}
 
 {{
 ### Characters
@@ -115,14 +116,14 @@ But the string-and-function approach seems simpler.
 Interoperation problems arise for a theoretic cross-language data notation, like
 JSON or XML. Many popular languages don't have a character type nor character
 literals, so you would end up banning character literals from data exchange
-formats. It seems simpler to just avoid them for now.
+formats. It seems simpler to just avoid them.
 
 ### Number Parsing
 
 Parsers for this data notation must forbid unexpected identifier characters
 immediately following digits in number literals. For example, `123_qwe` must
-generate a parse error. This avoid ambiguities and creates "dead space" reserved
-for future extensions.
+generate a parse error. This avoids ambiguities and creates "dead space"
+reserved for future extensions.
 }}
 
 {{ ## Strings }}
@@ -136,9 +137,8 @@ grave string: supports newlines, but not escapes: \t \n
 `
 
 {{
-All string literals are multiline.
-
-Single quotes are currently not supported and generate a parse error.
+All string literals are multiline. Single quotes are currently not supported and
+generate a parse error.
 }}
 
 {{ ## Identifiers }}
