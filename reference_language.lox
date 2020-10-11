@@ -18,14 +18,14 @@ The only punctuation is () and the infix dot accessor. There is no comma or
 semicolon. The language is whitespace-insensitive, but space must be used to
 separate literals, symbols, operators and so on.
 
-() must always be preceded by something, and always represents some kind of
-"call", such as: function call, method call, operator call, macro invocation,
-instantiating a generic type, literal constructor, type cast, type conversion,
-or one of various special forms. See examples in other sections.
+The first element inside () always represents some kind of "call", such as:
+function call, method call, operator call, macro invocation, instantiating a
+generic type, literal constructor, type cast, type conversion, or one of various
+special forms. See examples in other sections.
 }}
 
 (some_ident
-  (some_val.some_method 10 "20")
+  (some_method.some_val 10 "20")
   (block
     (some_ident (some_ident 10 "20") 30)
     (some_ident 10 "20")
@@ -33,7 +33,7 @@ or one of various special forms. See examples in other sections.
 )
 
 {{ Method chaining is inconvenient, and discouraged. }}
-(((some_val.some_method).some_method).some_method)
+(method_three.(method_two.(method_one.some_val)))
 
 (String_dict "key0" "value0" "key1" "value1")
 
@@ -45,11 +45,11 @@ a subscope, contains multiple statements, and returns its last expression.
 
 This is a function call with a single argument.
 }}
-(fmt.println
+(println.fmt
   {{ This block is an expression. }}
   (block
     {{ Side effect. }}
-    (fmt.println "hello world")
+    (println.fmt "hello world")
     {{ Return value. }}
     "20"
   )
@@ -83,7 +83,7 @@ Json_decoder
 Boolean variables, functions, struct fields should start with `is_`:
 }}
 (var is_deleted true)
-(fn is_deleted (val) val.is_deleted)
+(fn is_deleted (val) is_deleted.val)
 
 {{ ## Calling }}
 
@@ -92,7 +92,7 @@ An identifier followed by a block may invoke a function, a macro, a special
 syntactic form, or a type conversion.
 }}
 (some_func arg0 arg1 ...)
-(some_ident.some_method arg0 arg1 ...)
+(some_method.some_ident arg0 arg1 ...)
 (some_macro expressions)
 (Some_type some_val)
 
@@ -104,18 +104,18 @@ notation with a block:
 (and one (or two three))
 
 {{
-The dot property accessor is the only infix operator:
+The dot property accessor is the only infix operator. Unlike most languages,
+it's right-associative:
 }}
-one.two.three
-(((some_func).some_method).some_method).some_field
+three.two.one
+field_three.(method_two.(method_one.(some_func)))
 
 {{
 Note on expressions. When converting the data notation AST to the language AST,
-the compiler should group forms into expressions. Any block preceded by another
-form is grouped with it into a single "call" expression. Similarly, each dot
-operator is grouped with its operands into an expression. Various special forms
-and macros should operate on the level of expressions and statements, not data
-notation AST nodes.
+the compiler should group forms into expressions. Currently, only the infix dot
+operator requires this. Specifically, each dot is grouped with its operands into
+a single expression, recursively. Various special forms and macros should
+operate on the level of expressions and statements, not data notation AST nodes.
 }}
 
 {{ ## Function Definitions }}
@@ -133,7 +133,7 @@ than as an expression, is added to the scope under that name.
 
 (fn add (a b) (+ a b))
 
-(fn sum (coll) (coll.fold 0 (fn (a b) (+ a b))))
+(fn sum (coll) (fold.coll 0 (fn (a b) (+ a b))))
 
 {{
 `func` has no type inference. Parameter and return types must be fully
@@ -156,38 +156,23 @@ The return type must be specified after parameters, enclosed in `ret(...)`.
 (func opt_add
   (a (Opt T) b (Opt T)) (Ret (Opt T))
   (match
-    when (a (Opt.Some T) b (Opt.Some T)) then (Opt.Some (+ a b))
-    else (Opt.None)
+    when (a (Some.Opt T) b (Some.Opt T)) then (Some.Opt (+ a b))
+    else (None.Opt)
   )
 )
 
 {{
-The syntax for method definitions is still in flux and needs more careful
-consideration:
+Method definitions:
 }}
 
-(func some_method
-  (self Some_type param0 Other_type) (Ret Another_type)
-  (self.other_method)
-  (self.other_method)
+(func some_method.(self Some_type) (param0 Other_type) (Ret Another_type)
+  (other_method.self)
+  (other_method.self)
 )
 
-(func some_method
-  (self (Ref Some_type) param0 Other_type) (Ret Another_type)
-  (self.other_method)
-  (self.other_method)
-)
-
-(func Some_type.some_method
-  (param0 Other_type) (Ret Another_type)
-  (self.other_method)
-  (self.other_method)
-)
-
-(func (Ref Some_type).some_method
-  (param0 Other_type) (Ret Another_type)
-  (self.other_method)
-  (self.other_method)
+(func some_method.(self (Ref Some_type)) (param0 Other_type) (Ret Another_type)
+  (other_method.self)
+  (other_method.self)
 )
 
 {{
@@ -201,7 +186,7 @@ keywords. They can be used for variables, functions, struct fields, and more.
 
 Some_type
 
-some_module.Some_type
+Some_type.some_module
 
 {{ Anonymous struct type. }}
 (struct
@@ -298,7 +283,7 @@ The syntax in this example is general but verbose. This is fixable.
     field_one   String
     field_two   Int8
     field_three Bool
-    lock        sync.Mutex
+    lock        Mutex.sync
   )
   (meta
     field_one   (Dict "json" "fieldOne"   "db" "field_one")
@@ -475,13 +460,13 @@ The conversion is performed at compile time, at no runtime cost.
 (macro_literal_string (fn Rope_string (literal_string_content)
   (var chars (Slice Char) (string_to_chars literal_string_content))
 
-  (var char_chunks (Slice (Slice Char)) (chars.split_by_length 1024))
+  (var char_chunks (Slice (Slice Char)) (split_by_length.chars 1024))
 
   (quote (
-    chunks (unquote (char_chunks.map (fn (chars)
+    chunks (unquote (map.char_chunks (fn (chars)
       (quote
         (Rope_chunk
-          len (unquote (Ast_int chars.len))
+          len (unquote (Ast_int len.chars))
           chars (unquote (Ast_block chars))
         )
       )

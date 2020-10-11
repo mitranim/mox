@@ -178,13 +178,13 @@ func(
 )
 
 func(
-  Some_type.some_method(param0 Other_type) Ret(Another_type)
+  (self Some_type).some_method(param0 Other_type) Ret(Another_type)
   self.other_method()
   self.other_method()
 )
 
 func(
-  Ref(Some_type).some_method(param0 Other_type) Ret(Another_type)
+  (self Ref(Some_type)).some_method(param0 Other_type) Ret(Another_type)
   self.other_method()
   self.other_method()
 )
