@@ -6,7 +6,6 @@ file_extensions:
 scope: source.mox.nox
 
 variables:
-  # comment_line_start: ;;
   comment_block_start: \{\{
   comment_block_end: \}\}
   block_start: \(
@@ -29,10 +28,7 @@ variables:
   noise: (?:\s|{{inline_comment}})*
 
   exponent: '[Ee][+-]?'
-
   char_escape: \\x\h{2}|\\u\h{4}|\\U\h{8}|\\[0-7]{3}|\\.
-
-  heading: '#+\s*.*\w'
 
 contexts:
   prototype:
@@ -40,7 +36,6 @@ contexts:
 
   main:
     - include: match-numbers
-    - include: match-chars
     - include: match-strings
     - include: match-idents
     - include: match-operators
@@ -95,10 +90,6 @@ contexts:
     - match: \d+
       scope: constant.numeric.integer.mox
 
-  match-chars:
-    - match: \'[^']*'
-      scope: constant.character.mox.nox
-
   match-strings:
     - include: match-strings-double
     - include: match-strings-grave
@@ -126,27 +117,14 @@ contexts:
           pop: true
 
   match-comments:
-    # - include: match-comments-line
     - include: match-comments-block
 
-  # match-comments-line:
-  #   - match: '{{comment_line_start}}'
-  #     scope: punctuation.definition.comment.mox
-  #     push: pop-comment-line
-
-  pop-comment-line:
-    - meta_scope: comment.line.mox
-    - match: '{{heading}}'
-      scope: markup.heading.mox
-    - match: $\n?
-      pop: true
-
   match-comments-block:
-    - match: '({{comment_block_start}})\s*({{heading}})'
+    - match: '{{comment_block_start}}\s*((#+).*\S)\s*{{comment_block_end}}'
+      scope: comment.block.mox
       captures:
-        1: punctuation.definition.comment.begin.mox
-        2: markup.heading.mox
-      push: pop-comment-block
+        1: markup.heading.mox
+        2: punctuation.definition.comment.begin.mox
     - match: '{{comment_block_start}}'
       scope: punctuation.definition.comment.begin.mox
       push: pop-comment-block
@@ -156,10 +134,18 @@ contexts:
     - match: '{{comment_block_end}}'
       scope: punctuation.definition.comment.end.mox
       pop: true
-    - match: '^({{heading}})'
-      captures:
-        1: markup.heading.mox
+    - include: match-comment-block-multiline-headings
     - include: match-comments
+
+  match-comment-block-multiline-headings:
+    - match: '^#+'
+      scope: punctuation.definition.heading.begin.mox
+      push: pop-comment-block-multiline-heading
+
+  pop-comment-block-multiline-heading:
+    - meta_scope: markup.heading.mox
+    - match: (?={{comment_block_end}}|$)
+      pop: true
 
   match-idents:
     - include: match-idents-consts-lang
@@ -287,7 +273,7 @@ contexts:
   # Expecting maybe name, then params.
   pop-func-1:
     - include: pop-on-block-end
-    - match: '{{ident_any}}'
+    - match: '{{ident_other}}'
       scope: entity.name.function.func.mox.nox
       set: pop-func-2
     - match: (?={{block_start}})

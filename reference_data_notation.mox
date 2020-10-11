@@ -59,6 +59,17 @@ Rust, Swift convention of using Markdown.
 As mentioned above, comments must be preserved in the AST. If a language defined
 in terms of this notation has an interpreted form with a REPL, the docs
 generated from the comments might be made accessible in the REPL.
+
+The delimiters {{ }} are not set in stone. Better suggestions are welcome. The
+hard requirements are:
+
+* Different opening and closing delimiters, in order to support nesting.
+
+* Easy to type. Ideally, easy to write by hand.
+
+* No ambiguity with operators.
+
+* Reasonably unlikely to occur in text.
 }}
 
 {{ ## Numbers }}
@@ -76,7 +87,43 @@ information required to print the number back exactly as it was written.
 123.456 {{ Decimal floats. }}
 +10     {{ Positives. }}
 -10     {{ Negatives. }}
-'a'     {{ Characters (Uni-code-points). }}
+
+{{
+### Characters
+
+Character literals are currently not supported. They're avoidable and present
+interoperation problems.
+
+One common approach is to define a function that takes a string and returns a
+Unicode code point. Python example:
+
+    ord("a")
+    # 97
+
+In a compiled language we could validate and evaluate this at compile time.
+Thus, we avoid unnecessary syntax at no runtime cost. This approach is also more
+flexible: you could define multiple functions, tailored for specific use cases.
+
+Characters don't necessarily "cost" us syntactic space, because we could give
+them "dead" syntactic space in number literals, something like:
+
+    0ca
+    0_a
+
+But the string-and-function approach seems simpler.
+
+Interoperation problems arise for a theoretic cross-language data notation, like
+JSON or XML. Many popular languages don't have a character type nor character
+literals, so you would end up banning character literals from data exchange
+formats. It seems simpler to just avoid them for now.
+
+### Number Parsing
+
+Parsers for this data notation must forbid unexpected identifier characters
+immediately following digits in number literals. For example, `123_qwe` must
+generate a parse error. This avoid ambiguities and creates "dead space" reserved
+for future extensions.
+}}
 
 {{ ## Strings }}
 
@@ -87,6 +134,12 @@ double string: supports newlines and escapes: \t \n
 `
 grave string: supports newlines, but not escapes: \t \n
 `
+
+{{
+All string literals are multiline.
+
+Single quotes are currently not supported and generate a parse error.
+}}
 
 {{ ## Identifiers }}
 
@@ -116,7 +169,7 @@ ident.ident.ident
 
 {{
 This notation is biased towards treating operators as functions. It doesn't
-define operator precedence and doen't support parentheses for grouping. See the
+define operator precedence and doesn't support parentheses for grouping. See the
 section on calling conventions below.
 }}
 +(10 20 30)
@@ -130,7 +183,7 @@ and(true or(true false))
 {{
 Blocks of code are enclosed in parens: (). Parens are used for sequences,
 grouping, function calls, type literals, other special forms. No other
-delimiters are supported by the parser; [] {} would produce a syntax error.
+delimiters are supported by the parser; [] {} would produce a parse error.
 }}
 
 ()

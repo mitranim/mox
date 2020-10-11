@@ -21,7 +21,6 @@ type NodeNumber string
 type NodeStringDouble string
 type NodeStringGrave string
 type NodeIdentifier string
-type NodeCharacter string
 type NodeOperator string
 type NodeBlock []Node
 
@@ -31,7 +30,6 @@ func (self NodeNumber) String() string       { return string(self) }
 func (self NodeStringDouble) String() string { return strconv.Quote(string(self)) }
 func (self NodeStringGrave) String() string  { return "`" + string(self) + "`" }
 func (self NodeIdentifier) String() string   { return string(self) }
-func (self NodeCharacter) String() string    { return `'` + string(self) + `'` }
 func (self NodeOperator) String() string     { return string(self) }
 func (self NodeBlock) String() string        { return BlockStart + Format([]Node(self)) + BlockEnd }
 
@@ -92,8 +90,6 @@ func (self *Parser) PopNode() (_ Node, err error) {
 		return self.PopIdentifier()
 	case self.NextCharIn(charMapOperator):
 		return self.PopOperator()
-	case self.NextChar('\''):
-		return self.PopCharacter()
 	case self.NextChar('"'):
 		return self.PopStringDouble()
 	case self.NextChar('`'):
@@ -249,12 +245,6 @@ func (self *Parser) PopOperator() (NodeOperator, error) {
 	}
 
 	return NodeOperator(self.From(start)), nil
-}
-
-// Placeholder implementation without escapes.
-func (self *Parser) PopCharacter() (NodeCharacter, error) {
-	str, err := self.popStringBetween('\'', '\'')
-	return NodeCharacter(str), err
 }
 
 // Placeholder implementation without escapes.
@@ -468,7 +458,7 @@ func isNumber(node Node) bool {
 func stringToBytesAlloc(input string) []byte { return []byte(input) }
 
 var charMapWhitespace = stringCharMap(" \n\r\t\v")
-var charMapOperator = stringCharMap(`~!@#$%^&*:<>.?/\=+-`)
+var charMapOperator = stringCharMap(`~!@#$%^&*:<>.?/\|=+-`)
 var charMapIdentifierStart = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_`)
 var charMapIdentifier = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789`)
 var charMapDigitsBinary = stringCharMap(`01`)
