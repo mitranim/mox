@@ -197,7 +197,6 @@ Some_type.some_module
 {{
 Generic types specify their "parameter types" in ().
 }}
-(Tuple Some_type Some_type Some_type)
 (Array 16 Byte)
 (Slice Byte)
 (Slice (Slice Byte))
@@ -205,12 +204,11 @@ Generic types specify their "parameter types" in ().
 (Dict (Array 16 Byte) (Dict String (Slice Byte)))
 
 {{
-Variant type / tagged union type.
+Variant types (also called "sum" or "union" types) combine multiple other types.
+The other types must be defined separately. All types in a variant must be
+unique.
 }}
-(variant
-  Variant0 Some_type
-  Variant1 Other_type
-)
+(variant Some_type Other_type)
 
 {{
 Function type.
@@ -240,28 +238,32 @@ names, and so on.
 (type Some_type Other_type)
 
 {{
+The special built-in type `Nil` represents void. It can't be constructed. Values
+of this type are represented with the special built-in constant `nil`.
+}}
+Nil
+nil
+
+{{
 Generic types specify their parameters in ().
 }}
-(type (Opt T)
-  (variant
-    Some (Tuple T)
-    None (Tuple)
-  )
-)
+(type (Opt A) (variant A Nil))
 
 {{
 Generic types can specify conditions for parameter types.
 }}
 (type
-  (Res A B)
-  (variant
-    Ok A
-    Err B
-  )
+  (Either A B)
+  (variant A B)
   (where
-    B Error
+    B Err
   )
 )
+
+{{
+Simpler version of the previous definition:
+}}
+(type (Res A) (variant A Err))
 
 {{
 `type` is not a reserved keyword, as there are NO RESERVED KEYWORDS. It can be
@@ -384,7 +386,7 @@ interpolation. The macro could be defined to return an AST or print a string.
         {{ Interpolation: variable }}
         @var0
 
-        {{ Interpolation: arbitry expression (function or macro) }}
+        {{ Interpolation: arbitrary expression (function or macro) }}
         @(str var0 var1 var2)
       )
     )
