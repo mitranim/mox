@@ -190,8 +190,8 @@ func(
 )
 
 {{
-Neither `fn` nor `func` is a reserved keyword, as there are NO reserved
-keywords. They can be used for variables, functions, struct fields, and more.
+Neither `fn` nor `func` is a reserved keyword, as there are NO RESERVED
+KEYWORDS. They can be used for variables, functions, struct fields, and more.
 }}
 var(func func(()))
 type(Struct_with_func struct(func Func()))
@@ -501,9 +501,9 @@ many, many other semantics, which are omitted here.
 `var` declares a variable, specifies its type, and assigns a value. Either type
 or value may be omitted, but not both.
 
-Syntax quirk: this relies on the `Title_snake` naming convention for types. If
-we didn't have this convention, we'd have to split `var` into two keywords, one
-with type inference and one without.
+If types can be used as values, this can't unambiguously support all three
+variants, and must be split into two keywords: one with type inference and one
+without.
 
 This is a void statement that doesn't return a value.
 }}
@@ -517,9 +517,9 @@ allocated and immutable. Constants may be used in compile-time calculations or
 as parameters to generic types, such as array sizes. The value is mandatory and
 must be calculable at compile time. The type may be inferred.
 
-Syntax quirk: this relies on the `Title_snake` naming convention for types. If
-we didn't have this convention, we'd have to split `const` into two keywords,
-one with type inference and one without.
+If types can be used as values, this can't unambiguously support all three
+variants, and must be split into two keywords: one with type inference and one
+without.
 
 This is a void statement that doesn't return a value.
 }}

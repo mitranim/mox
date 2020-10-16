@@ -13,7 +13,7 @@ variables:
 
   ident_any: \b[[:alpha:]_][[:alnum:]_]*\b
   ident_const: \b[[:upper:]][[:upper:][:digit:]_]*[[:upper:]][[:upper:][:digit:]_]*\b
-  ident_type: \b[[:upper:]_][[:alnum:]_]*\b
+  ident_type: \b[[:upper:]][[:alnum:]_]*\b
   ident_other: \b[[:lower:]_][[:alnum:]_]*\b
 
   # `this` is included for the JS dialect. Should be removed after splitting

@@ -106,7 +106,7 @@ Thus, we avoid unnecessary syntax at no runtime cost. This approach is also more
 flexible: you could define multiple functions, tailored for specific use cases.
 
 Characters don't necessarily "cost" us syntactic space, because we could give
-them "dead" syntactic space in number literals, something like:
+them "dead" syntactic space from number literals, something like:
 
     0ca
     0_a
@@ -117,6 +117,9 @@ Interoperation problems arise for a theoretic cross-language data notation, like
 JSON or XML. Many popular languages don't have a character type nor character
 literals, so you would end up banning character literals from data exchange
 formats. It seems simpler to just avoid them.
+
+Note that a language defined in terms of this notation could have a character
+_type_ even without character _literals_.
 
 ### Number Parsing
 
@@ -154,29 +157,38 @@ arbitrary_ident true false nil self
 {{ ## Operators }}
 
 {{
-Any of these symbols, in any combination, are considered an operator. When not
-separated by a space, they combine into another, different, operator. Any
-combination, of any length, is allowed.
+Any of these characters, in any combination, are considered an operator. There
+are NO predefined operators.
 }}
 ~ ! @ # $ % ^ & * : < > . ? / \ | = + -
 ~! @# $% ^& *: <> .? /\ |= +-
 
 {{
-Operators don't have to be separated from other forms by whitespace:
+Operators must be separated by whitespace from each other. Technically operators
+don't have to be separated from other forms, but depending on the operator,
+surrounding whitespace can be preferable for readability.
 }}
-ident.ident.ident
+- + == ...
+one.two.three
 10+20
+10 + 20
 
 {{
-This notation is biased towards treating operators as functions. It doesn't
-define operator precedence and doesn't support parentheses for grouping. See the
-section on calling conventions below.
+Languages implemented in terms of this notation might want to support prefix and
+infix operators for some basic essentials:
 }}
-+(10 20 30)
-<(10 20)
->(30 40)
-not(false)
-and(true or(true false))
+-10
+&val
+@ref
+one.two.three
+
+{{
+Controlling precedence requires grouping: `10 * (20 + 30)`. In this notation,
+grouping is done by "calling" operators as functions. See the calling
+conventions below.
+}}
+*(10 +(20 30))
+(* 10 (+ 20 30))
 
 {{ ## Blocks }}
 
@@ -201,7 +213,8 @@ In a typed language defined in terms of this notation, generic types would be
 instantiated into concrete types by using the same "call" notation. See below.
 
 Syntax highlighting for this data notation should NOT highlight "calls", because
-DSLs are allowed to pick their own call convention.
+DSLs are allowed to pick their own call convention. Syntax highlighting for
+specific languages should highlight calls.
 }}
 
 {{ Function call }}
@@ -212,6 +225,7 @@ one.two.three(10 "20")
 
 {{ Operator call }}
 +(10 20 30)
+*(10 +(20 30))
 
 {{ Literal constructor }}
 String_dict("key0" "value0" "key1" "value1")
@@ -243,7 +257,23 @@ write and read, and has a richer set of primitive building blocks, not just
 strings.
 }}
 
+List("value0" "value1" "value2")
+
+:("value0" "value1" "value2")
+
 Dict("key0" 123 "key1" 456 "key2" 789)
+
+Dict(
+  "key0" 123
+  "key1" 456
+  "key2" 789
+)
+
+::(
+  "key0" 123
+  "key1" 456
+  "key2" 789
+)
 
 Set(123 456 789)
 
