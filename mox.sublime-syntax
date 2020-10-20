@@ -6,8 +6,8 @@ file_extensions:
 scope: source.mox
 
 variables:
-  comment_block_start: \{\{
-  comment_block_end: \}\}
+  comment_block_start: \[
+  comment_block_end: \]
   block_start: \(
   block_end: \)
   ident: \b[[:alpha:]_][[:alnum:]_]*\b

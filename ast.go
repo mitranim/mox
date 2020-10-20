@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-const CommentStart = `{{`
-const CommentEnd = `}}`
+const CommentStart = `[`
+const CommentEnd = `]`
 const BlockStart = `(`
 const BlockEnd = `)`
 

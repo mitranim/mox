@@ -7,7 +7,7 @@ import (
 
 func TestFormat(t *testing.T) {
 	ast := []Node{
-		NodeComment(` # comment `),
+		NodeComment(`# comment`),
 		NodeWhitespace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
@@ -16,7 +16,7 @@ func TestFormat(t *testing.T) {
 		},
 	}
 
-	expected := `{{ # comment }} (123.456 "hello world")`
+	expected := `[# comment] (123.456 "hello world")`
 	actual := Format(ast)
 
 	if expected != actual {
@@ -36,7 +36,7 @@ func TestFormatWithNil(t *testing.T) {
 }
 
 func TestParseAndFormat(t *testing.T) {
-	source := `{{ # comment {{ nested }} }} (123.456 ++ ident "hello world")`
+	source := `[# comment [nested]] (123.456 ++ ident "hello world")`
 
 	ast, err := Parse(source)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestParseAndFormat(t *testing.T) {
 	}
 
 	expectedAst := []Node{
-		NodeComment(` # comment {{ nested }} `),
+		NodeComment(`# comment [nested]`),
 		NodeWhitespace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
@@ -68,7 +68,7 @@ func TestParseAndFormat(t *testing.T) {
 }
 
 func TestParseAndFormatWithMinimalWhitespace(t *testing.T) {
-	source := `{{comment}}(123"one"++two"three"(four|456)789)five 012`
+	source := `[comment](123"one"++two"three"(four|456)789)five 012`
 
 	ast, err := Parse(source)
 	if err != nil {

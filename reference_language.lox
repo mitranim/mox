@@ -1,18 +1,18 @@
-{{ # Level 1: see `reference_data_notation.mox`! }}
+[# Level 1: see `reference_data_notation.mox`!]
 
-{{ # Level 2: Language }}
+[# Level 2: Language]
 
-{{
+[
 This level represents the syntax of a hypothetical language, which is defined
 in terms of the Level 1 data notation. It doesn't add anything that would
 require changing the parser.
-}}
+]
 
-{{ ## General Structure }}
+[## General Structure]
 
-{{
+[
 Everything is either a primitive literal, an ident or operator, or a block
-enclosed in () parens. Parens are the only delimiter; [] {} are not used.
+enclosed in () parens. Parens are the only delimiter; {} is not used.
 
 The only punctuation is () and the infix dot accessor. There is no comma or
 semicolon. The language is whitespace-insensitive, but space must be used to
@@ -22,7 +22,10 @@ The first element inside () always represents some kind of "call", such as:
 function call, method call, operator call, macro invocation, instantiating a
 generic type, literal constructor, type cast, type conversion, or one of various
 special forms. See examples in other sections.
-}}
+
+There are NO RESERVED KEYWORDS. All built-in syntactic forms are represented as
+"calls".
+]
 
 (some_ident
   (some_method.some_val 10 "20")
@@ -32,101 +35,99 @@ special forms. See examples in other sections.
   )
 )
 
-{{ Method chaining is inconvenient, and discouraged. }}
+[Method chaining is inconvenient, and discouraged.]
 (method_three.(method_two.(method_one.some_val)))
 
 (String_dict "key0" "value0" "key1" "value1")
 
 (Array 16 Int)
 
-{{
+[
 To use a block as an expression, we provide the special form `block`. It creates
 a subscope, contains multiple statements, and returns its last expression.
 
 This is a function call with a single argument.
-}}
+]
 (println.fmt
-  {{ This block is an expression. }}
+  [This block is an expression.]
   (block
-    {{ Side effect. }}
+    [Side effect.]
     (println.fmt "hello world")
-    {{ Return value. }}
+    [Return value.]
     "20"
   )
 )
 
-{{ ## Naming Convention }}
+[## Naming Convention]
 
-{{
+[
 * Constants use `UPPER_SNAKE_CASE`.
 * Type names use `Capital_snake_case`.
-* Other identifiers use `snake_case`.
+* Other identifiers use `lower_snake_case`.
 
-To avoid ambiguity, constant names must have at least two letters.
+To avoid ambiguity with types, constant names must have at least two letters.
 
 Other case styles should be forbidden by the compiler and automatically changed
 by the formatter.
-}}
+]
 CONSTANT_UPPER_SNAKE_CASE
 Type_capital_snake_case
-ident_snake_case
+ident_lower_snake_case
 
-{{
+[
 Abbreviations are considered regular words and obey the regular casing rules.
-}}
+]
 json_encode
 json_decode
 Json_encoder
 Json_decoder
 
-{{
-Boolean variables, functions, struct fields should start with `is_`:
-}}
+[Boolean variables, functions, struct fields should start with `is_`:]
 (var is_deleted true)
 (fn is_deleted (val) is_deleted.val)
 
-{{ ## Calling }}
+[## Calling]
 
-{{
+[
 An identifier followed by a block may invoke a function, a macro, a special
 syntactic form, or a type conversion.
-}}
+]
 (some_func arg0 arg1 ...)
 (some_method.some_ident arg0 arg1 ...)
 (some_macro expressions)
 (Some_type some_val)
 
-{{
+[
 Function calls, operators, boolean expressions, everything uses the prefix
 notation with a block:
-}}
+]
 (+ one two)
 (and one (or two three))
 
-{{
+[
 The dot property accessor is the only infix operator. Unlike most languages,
 it's right-associative:
-}}
+]
 three.two.one
 field_three.(method_two.(method_one.(some_func)))
 
-{{
+[
 Note on expressions. When converting the data notation AST to the language AST,
 the compiler should group forms into expressions. Currently, only the infix dot
 operator requires this. Specifically, each dot is grouped with its operands into
 a single expression, recursively. Various special forms and macros should
 operate on the level of expressions and statements, not data notation AST nodes.
-}}
+]
 
-{{ ## Function Definitions }}
+[## Function Definitions]
 
-{{
+[
 `fn` has full type inference. Parameter and return types can't be specified. The
 function can optionally be named. A named function used as a statement, rather
 than as an expression, is added to the scope under that name.
-}}
+]
 
-{{ Empty function. }}
+[Empty function.]
 (fn ())
 
 (fn a (b) (+ a b))
@@ -135,15 +136,15 @@ than as an expression, is added to the scope under that name.
 
 (fn sum (coll) (fold.coll 0 (fn (a b) (+ a b))))
 
-{{
+[
 `func` has no type inference. Parameter and return types must be fully
 specified. The function can optionally be named. A named function used as a
 statement, rather than as an expression, is added to the scope under that name.
 
 The return type must be specified after parameters, enclosed in `ret(...)`.
-}}
+]
 
-{{ Empty function. }}
+[Empty function.]
 (func ())
 
 (func (a T b T) (Ret T) (+ a b))
@@ -161,9 +162,7 @@ The return type must be specified after parameters, enclosed in `ret(...)`.
   )
 )
 
-{{
-Method definitions:
-}}
+[Method definitions:]
 
 (func some_method.(self Some_type) (param0 Other_type) (Ret Another_type)
   (other_method.self)
@@ -175,52 +174,48 @@ Method definitions:
   (other_method.self)
 )
 
-{{
+[
 Neither `fn` nor `func` is a reserved keyword, as there are NO RESERVED
 KEYWORDS. They can be used for variables, functions, struct fields, and more.
-}}
+]
 (var func (func ()))
 (type Struct_with_func (struct func (Func ())))
 
-{{ ## Type Literals }}
+[## Type Literals]
 
 Some_type
 
 Some_type.some_module
 
-{{ Anonymous struct type. }}
+[Anonymous struct type.]
 (struct
   field0 Type0
   field1 Type1
 )
 
-{{
-Generic types specify their "parameter types" in ().
-}}
+[Generic types specify their "parameter types" in ().]
 (Array 16 Byte)
 (Slice Byte)
 (Slice (Slice Byte))
 (Dict String Some_type)
 (Dict (Array 16 Byte) (Dict String (Slice Byte)))
 
-{{
+[
 Variant types (also called "sum" or "union" types) combine multiple other types.
 The other types must be defined separately. All types in a variant must be
 unique.
-}}
+]
 (variant Some_type Other_type)
 
-{{
-Function type.
-}}
+[Function type.]
 (Func (Type0 Type1) Type2)
 
-{{ ## Type Definitions }}
+[## Type Definitions]
 
-{{
+[
 `type` defines a named type. It must begin with a type name, immediately
 followed by a type literal.
-}}
+]
 (type
   Parse_state (struct
     string String
@@ -230,28 +225,24 @@ followed by a type literal.
   )
 )
 
-{{
+[
 The right hand side of a type definition can be any type, either anonymous or
 named. The defined type will have the same underlying memory structure, field
 names, and so on.
-}}
+]
 (type Some_type Other_type)
 
-{{
+[
 The special built-in type `Nil` represents void. It can't be constructed. Values
 of this type are represented with the special built-in constant `nil`.
-}}
+]
 Nil
 nil
 
-{{
-Generic types specify their parameters in ().
-}}
+[Generic types specify their parameters in ().]
 (type (Opt A) (variant A Nil))
 
-{{
-Generic types can specify conditions for parameter types.
-}}
+[Generic types can specify conditions for parameter types.]
 (type
   (Either A B)
   (variant A B)
@@ -260,26 +251,24 @@ Generic types can specify conditions for parameter types.
   )
 )
 
-{{
-Simpler version of the previous definition:
-}}
+[Simpler version of the previous definition:]
 (type (Res A) (variant A Err))
 
-{{
+[
 `type` is not a reserved keyword, as there are NO RESERVED KEYWORDS. It can be
 used for variables, functions, struct fields, and more. Syntax highlighting must
 be contextual.
-}}
+]
 (var type "some_value")
 (type Some_type (struct type String))
 
-{{
+[
 We can associate metadata with each type, and with each field of each type.
 Public/private is part of that metadata. Public is the default, private is
 opt-in.
 
 The syntax in this example is general but verbose. This is fixable.
-}}
+]
 (type
   Some_struct (struct
     field_one   String
@@ -295,7 +284,7 @@ The syntax in this example is general but verbose. This is fixable.
   )
 )
 
-{{ ## Instantiating Types }}
+[## Instantiating Types]
 
 (Some_slice 10 20 30)
 
@@ -313,9 +302,9 @@ The syntax in this example is general but verbose. This is fixable.
   three 30
 )
 
-{{ ## Macros }}
+[## Macros]
 
-{{
+[
 The language supports macros. Macros are functions interpreted by the compiler.
 They take AST and return AST.
 
@@ -325,26 +314,26 @@ each expression, such as its type.
 
 Technically, macros might not be limited to just AST operations. There might be
 other interesting uses, for example involving IO.
-}}
+]
 
-{{
+[
 Convention: for compatibility with syntax highlighting and symbol indexing,
 name-defining macros should always wrap one of the well-known name-defining
 forms.
-}}
+]
 
-{{ Bad }}
+[Bad]
 (special_fn fn_name (params) code)
 
-{{ Good }}
+[Good]
 (special (fn fn_name (params) code))
 
-{{
+[
 Example SQL generation with a macro. This hypothetical `sql_query` macro
 supports argument substitution (default) and text interpolation (opt-in).
 Arguments are replaced with positional placeholders and added to the argument
 slice. The returned object contains text and arguments.
-}}
+]
 
 (var table_name "persons")
 
@@ -358,7 +347,7 @@ slice. The returned object contains text and arguments.
   not is_deleted
 `)
 
-{{ Type returned by `sql_query`. }}
+[Type returned by `sql_query`.]
 (type
   Sql_query (struct
     text String
@@ -366,36 +355,36 @@ slice. The returned object contains text and arguments.
   )
 )
 
-{{
+[
 Example XML generation with a hypothetical `xml` macro. Uses @ for
 interpolation. The macro could be defined to return an AST or print a string.
-}}
+]
 (xml
   (html
     (document
       (div
-        {{ Attributes }}
+        [Attributes]
         (:: attr0 "value0" attr1 "value1")
 
-        {{ Nested element with a text node }}
+        [Nested element with a text node]
         (span "text")
 
-        {{ Text node }}
+        [Text node]
         "text"
 
-        {{ Interpolation: variable }}
+        [Interpolation: variable]
         @var0
 
-        {{ Interpolation: arbitrary expression (function or macro) }}
+        [Interpolation: arbitrary expression (function or macro)]
         @(str var0 var1 var2)
       )
     )
   )
 )
 
-{{ ## Constructor Macros }}
+[## Constructor Macros]
 
-{{
+[
 It might be possible to allow "overloading" constructor syntax for user-defined
 types, by associating a macro with a type, which is automatically invoked for
 every literal value of that type found in source code. Untyped constants should
@@ -413,9 +402,9 @@ Example use cases:
   * Big integers or big floats, written using the normal numeric syntax, parsed
     with higher precision than machine numbers.
 _
-}}
+]
 
-{{ Example rope string type used below. }}
+[Example rope string type used below.]
 (type
   Rope_string (struct
     chunks (Slice Rope_chunk)
@@ -429,7 +418,7 @@ _
   )
 )
 
-{{
+[
 Example constructor macro for a rope string type. Overloads the string literal
 syntax, replacing literal strings with literal `Rope_string` constructors. This
 macro should be invoked for any string literal whose type is `Rope_string`,
@@ -458,7 +447,7 @@ Example output, if chunk size was 4 rather than 1024:
     )
 
 The conversion is performed at compile time, at no runtime cost.
-}}
+]
 (macro_literal_string (fn Rope_string (literal_string_content)
   (var chars (Slice Char) (string_to_chars literal_string_content))
 
@@ -476,14 +465,14 @@ The conversion is performed at compile time, at no runtime cost.
   ))
 ))
 
-{{ ## Variables }}
+[## Variables]
 
-{{
+[
 Note: as most of this document, this is mostly about the syntax. Variables have
 many, many other semantics, which are omitted here.
-}}
+]
 
-{{
+[
 `var` declares a variable, specifies its type, and assigns a value. Either type
 or value may be omitted, but not both.
 
@@ -492,12 +481,12 @@ variants, and must be split into two keywords: one with type inference and one
 without.
 
 This is a void statement that doesn't return a value.
-}}
+]
 (var some_ident Some_type)
 (var some_ident           "some_value")
 (var some_ident Some_type "some_value")
 
-{{
+[
 `const` declares a constant value. Unlike variables, constants are statically
 allocated and immutable. Constants may be used in compile-time calculations or
 as parameters to generic types, such as array sizes. The value is mandatory and
@@ -508,11 +497,11 @@ variants, and must be split into two keywords: one with type inference and one
 without.
 
 This is a void statement that doesn't return a value.
-}}
+]
 (const some_ident           "some_value")
 (const some_ident Some_type "some_value")
 
-{{
+[
 `set` reassigns a variable's value. The variable must have been previously
 declared.
 
@@ -523,5 +512,5 @@ block scoped, while assignments may want to modify a variable in an outer scope,
 necessitating an assignment-only form.
 
 This is a void statement that doesn't return a value.
-}}
+]
 (set some_ident "other_value")

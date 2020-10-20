@@ -1,6 +1,6 @@
-{{ # Level 1: Data Notation }}
+[# Level 1: Data Notation]
 
-{{
+[
 The first level of the syntax defines a "data notation": literal syntax for
 various primitive types and a nestable block structure. This level is not aware
 of any language specifics. It has NO RESERVED KEYWORDS or special constants such
@@ -27,29 +27,29 @@ text encoding. Specific parser implementations may restrict input to UTF-8 text.
 This notation currently doesn't define a way to embed binary data. It's possible
 instead to use base64 strings (language-independent but requires special
 interpretation) or literal byte slice constructors (language-specific).
-}}
+]
 
-{{ ## Comments }}
+[## Comments]
 
-{{
-Comments are enclosed in {{ }} and always multiline. Nested comments are
-supported.
+[
+Comments are enclosed in [] and always multiline. Nested comments are supported.
 
-By convention, single-line comments should have leading and trailing spaces.
+By convention, single-line comments should have NO leading or trailing spaces.
 This should be enforced by the formatter:
 
-    {{ space before, space after }}
+    [no space before, no space after]
 
 By convention, multiline comments should have leading and trailing newlines,
 with no unnecessary indentation or other noise before each line. The formatter
-should enforce leading and trailing newlines:
+should enforce leading and trailing newlines, but allow indentation, which is
+useful for code and other ASCII art:
 
-    {{
+    [
     some_text
     some_text
         markdown_indented_code_block
     some_text
-    }}
+    ]
 
 Comments may be used to generate documentation. Most likely following the Go,
 Rust, Swift convention that a comment immediately followed by a named definition
@@ -60,7 +60,16 @@ As mentioned above, comments must be preserved in the AST. If a language defined
 in terms of this notation has an interpreted form with a REPL, the docs
 generated from the comments might be made accessible in the REPL.
 
-The delimiters {{ }} are not set in stone. Better suggestions are welcome. The
+To include an unpaired closing delimiter, you can repeat the opening delimiter
+at the start. This is considered a reasonable tradeoff for the ease of writing
+all other comments.
+
+    [[[
+    First line about an unpaired closing `]`.
+    Second line about an unpaired closing `]`.
+    ]
+
+The delimiters [] are not set in stone. Better suggestions are welcome. The
 hard requirements are:
 
 * Different opening and closing delimiters, in order to support nesting.
@@ -68,28 +77,26 @@ hard requirements are:
 * Easy to type. Ideally, easy to write by hand.
 
 * No ambiguity with operators.
+]
 
-* Reasonably unlikely to occur in text.
-}}
+[## Numbers]
 
-{{ ## Numbers }}
-
-{{
+[
 Numbers must be parsed with unlimited precision, in order to support untyped
 numeric constants and "big number" literals. The AST must preserve the
 information required to print the number back exactly as it was written.
 
 Number literals don't include the `+` `-` signs. Those are implemented
 separately as unary operators.
-}}
+]
 
-0b10    {{ Binary integers. }}
-0o123   {{ Octal integers. }}
-0x123   {{ Hex integers. }}
-10      {{ Decimal integers. }}
-123.456 {{ Decimal floats. }}
+0b10    [Binary integers.]
+0o123   [Octal integers.]
+0x123   [Hex integers.]
+10      [Decimal integers.]
+123.456 [Decimal floats.]
 
-{{
+[
 ### Characters
 
 Character literals are currently not supported. They're avoidable and present
@@ -127,9 +134,9 @@ Parsers for this data notation must forbid unexpected identifier characters
 immediately following digits in number literals. For example, `123_qwe` must
 generate a parse error. This avoids ambiguities and creates "dead space"
 reserved for future extensions.
-}}
+]
 
-{{ ## Strings }}
+[## Strings]
 
 "
 double string: supports newlines and escapes: \t \n
@@ -139,73 +146,83 @@ double string: supports newlines and escapes: \t \n
 grave string: supports newlines, but not escapes: \t \n
 `
 
-{{
+[
 All string literals are multiline. Single quotes are currently not supported and
 generate a parse error.
-}}
+]
 
-{{ ## Identifiers }}
+[## Identifiers]
 
-{{
+[
 Identifiers have C-like restrictions: only US ASCII Latin alphanumerics,
 starting with a letter. There are NO RESERVED KEYWORDS in this notation.
 
 None of these have any special meaning.
-}}
+]
 arbitrary_ident true false nil self
 
-{{ ## Operators }}
+[## Operators]
 
-{{
+[
 Any of these characters, in any combination, are considered an operator. There
 are NO predefined operators.
-}}
+]
 ~ ! @ # $ % ^ & * : < > . ? / \ | = + -
 ~! @# $% ^& *: <> .? /\ |= +-
 
-{{
-Operators must be separated by whitespace from each other. Technically operators
-don't have to be separated from other forms, but depending on the operator,
-surrounding whitespace can be preferable for readability.
-}}
+[
+Operators must be separated from each other by whitespace, delimiters, or other
+forms. Operators and other forms can be adjacent, but intermediary whitespace
+can be preferable for readability.
+]
 - + == ...
 one.two.three
-10+20
-10 + 20
+10+20+20
+10 + 20 + 30
 
-{{
-Languages implemented in terms of this notation might want to support prefix and
-infix operators for some basic essentials:
-}}
--10
-&val
-@ref
-one.two.three
-
-{{
-Controlling precedence requires grouping: `10 * (20 + 30)`. In this notation,
-grouping is done by "calling" operators as functions. See the calling
+[
+Controlling precedence requires grouping. Because this notation has only one
+delimiter, we can't afford to use parens for grouping: `10 * (20 + 30)`.
+Therefore, grouping is done by "calling" operators as functions. See the calling
 conventions below.
-}}
+]
 *(10 +(20 30))
 (* 10 (+ 20 30))
 
-{{ ## Blocks }}
+[
+Languages defined in terms of this notation may choose to support either infix
+operators, or prefix operators without parens. Supporting both infix and
+prefix might be impractical, because in the absence of punctuation it creates
+ambiguities and gotchas.
+]
+one.two.three
+-10
+&val
+@ref
 
-{{
+[
+Example ambiguity/gotcha resulting from supporting both infix and paren-free
+prefix.
+]
+some_func(10 -20) -> some_func(-(10 20))
+some_func(10 -20) -> some_func(10 -(20))
+
+[## Blocks]
+
+[
 Blocks of code are enclosed in parens: (). Parens are used for sequences,
 grouping, function calls, type literals, other special forms. No other
-delimiters are supported by the parser; [] {} would produce a parse error.
-}}
+delimiters are supported by the parser; {} would produce a parse error.
+]
 
 ()
 (() ())
 (10 "20")
 (10 ("20" 30))
 
-{{ ## Calling }}
+[## Calling]
 
-{{
+[
 By convention, anything followed by a block represents a "call": function call,
 operator call, literal constructor, macro, any other special form.
 
@@ -215,38 +232,38 @@ instantiated into concrete types by using the same "call" notation. See below.
 Syntax highlighting for this data notation should NOT highlight "calls", because
 DSLs are allowed to pick their own call convention. Syntax highlighting for
 specific languages should highlight calls.
-}}
+]
 
-{{ Function call }}
+[Function call]
 one(10 "20")
 
-{{ Method call }}
+[Method call]
 one.two.three(10 "20")
 
-{{ Operator call }}
+[Operator call]
 +(10 20 30)
 *(10 +(20 30))
 
-{{ Literal constructor }}
+[Literal constructor]
 String_dict("key0" "value0" "key1" "value1")
 
-{{ Generic type instantiation (the result is a type) }}
+[Generic type instantiation (the result is a type)]
 Dict(String Int)
 
-{{ Type instantiation -> literal constructor }}
+[Type instantiation -> literal constructor]
 Dict(String String)("key0" "value0" "key1" "value1")
 
-{{
+[
 DSL writers are free to use the Lisp-style inside-parens calling convention,
 where the "callable" is the first element in parens. However, we recommend the
 previously mentioned outside-parens convention.
-}}
+]
 (some_func 10 "20" (other_func 30 "40"))
 (+ 10 20 30)
 
-{{ ## Serialization and JSON }}
+[## Serialization and JSON]
 
-{{
+[
 This notation can represent arbitrary data. However, the base level is not
 directly interchangeable with JSON because it lacks dicts.
 
@@ -255,7 +272,7 @@ This allows a much richer set of types compared to JSON. In this sense, our
 notation is closer to XML than JSON. But compared to XML, it's MUCH easier to
 write and read, and has a richer set of primitive building blocks, not just
 strings.
-}}
+]
 
 List("value0" "value1" "value2")
 

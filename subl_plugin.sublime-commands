@@ -1,6 +1,10 @@
 [
   {
-    "caption": "Mox: swap parens and braces",
-    "command": "mox_swap_parens_braces",
+    "caption": "Mox: swap delimiters",
+    "command": "mox_swap_delims",
+  },
+  {
+    "caption": "Mox: swap comment delimiters",
+    "command": "mox_swap_comment_delims",
   },
 ]

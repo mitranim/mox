@@ -6,8 +6,8 @@ file_extensions:
 scope: source.mox.nox
 
 variables:
-  comment_block_start: \{\{
-  comment_block_end: \}\}
+  comment_block_start: \[
+  comment_block_end: \]
   block_start: \(
   block_end: \)
 
@@ -70,25 +70,25 @@ contexts:
 
   match-integers-bin:
     - match: (0b)[01]+(?=\D)
-      scope: constant.numeric.binary.mox
+      scope: constant.numeric.binary.mox.nox
       captures:
-        1: punctuation.definition.numeric.binary.mox
+        1: punctuation.definition.numeric.binary.mox.nox
 
   match-integers-oct:
     - match: (0o)[0-7]+(?=\D)
-      scope: constant.numeric.octal.mox
+      scope: constant.numeric.octal.mox.nox
       captures:
-        1: punctuation.definition.numeric.octal.mox
+        1: punctuation.definition.numeric.octal.mox.nox
 
   match-integers-hex:
     - match: (0[x])\h+
-      scope: constant.numeric.hex.mox
+      scope: constant.numeric.hex.mox.nox
       captures:
-        1: punctuation.definition.numeric.hexadecimal.mox
+        1: punctuation.definition.numeric.hexadecimal.mox.nox
 
   match-integers-dec:
     - match: \d+
-      scope: constant.numeric.integer.mox
+      scope: constant.numeric.integer.mox.nox
 
   match-strings:
     - include: match-strings-double
@@ -121,29 +121,29 @@ contexts:
 
   match-comments-block:
     - match: '{{comment_block_start}}\s*((#+).*\S)\s*{{comment_block_end}}'
-      scope: comment.block.mox
+      scope: comment.block.mox.nox
       captures:
-        1: markup.heading.mox
-        2: punctuation.definition.comment.begin.mox
+        1: markup.heading.mox.nox
+        2: punctuation.definition.comment.begin.mox.nox
     - match: '{{comment_block_start}}'
-      scope: punctuation.definition.comment.begin.mox
+      scope: punctuation.definition.comment.begin.mox.nox
       push: pop-comment-block
 
   pop-comment-block:
-    - meta_scope: comment.block.mox
+    - meta_scope: comment.block.mox.nox
     - match: '{{comment_block_end}}'
-      scope: punctuation.definition.comment.end.mox
+      scope: punctuation.definition.comment.end.mox.nox
       pop: true
     - include: match-comment-block-multiline-headings
     - include: match-comments
 
   match-comment-block-multiline-headings:
     - match: '^#+'
-      scope: punctuation.definition.heading.begin.mox
+      scope: punctuation.definition.heading.begin.mox.nox
       push: pop-comment-block-multiline-heading
 
   pop-comment-block-multiline-heading:
-    - meta_scope: markup.heading.mox
+    - meta_scope: markup.heading.mox.nox
     - match: (?={{comment_block_end}}|$)
       pop: true
 
@@ -202,7 +202,7 @@ contexts:
 
   match-operators:
     - match: '[~!@#$%^&*:<>.?/\\|=+-]+'
-      scope: keyword.operator.mox
+      scope: keyword.operator.mox.nox
 
   match-blocks:
     - match: '{{block_start}}'
