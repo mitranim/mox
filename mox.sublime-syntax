@@ -104,11 +104,13 @@ contexts:
     - include: match-comments-block
 
   match-comments-block:
-    - match: '{{comment_block_start}}\s*((#+).*\S)\s*{{comment_block_end}}'
+    - match: '({{comment_block_start}})\s*((#+).*\S)\s*({{comment_block_end}})'
       scope: comment.block.mox
       captures:
-        1: markup.heading.mox
-        2: punctuation.definition.comment.begin.mox
+        1: punctuation.definition.comment.begin.mox
+        2: markup.heading.mox
+        3: punctuation.definition.heading.begin.mox
+        4: punctuation.definition.comment.begin.mox
     - match: '{{comment_block_start}}'
       scope: punctuation.definition.comment.begin.mox
       push: pop-comment-block
@@ -118,15 +120,15 @@ contexts:
     - match: '{{comment_block_end}}'
       scope: punctuation.definition.comment.end.mox
       pop: true
-    - include: match-comment-block-multiline-headings
+    - include: match-comment-block-multi-line-headings
     - include: match-comments
 
-  match-comment-block-multiline-headings:
+  match-comment-block-multi-line-headings:
     - match: '^#+'
       scope: punctuation.definition.heading.begin.mox
-      push: pop-comment-block-multiline-heading
+      push: pop-comment-block-multi-line-heading
 
-  pop-comment-block-multiline-heading:
+  pop-comment-block-multi-line-heading:
     - meta_scope: markup.heading.mox
     - match: (?={{comment_block_end}}|$)
       pop: true
