@@ -46,7 +46,7 @@ There are NO RESERVED KEYWORDS. All built-in syntactic forms are represented as
 To use a block as an expression, we provide the special form `block`. It creates
 a subscope, contains multiple statements, and returns its last expression.
 
-This is a function call with a single argument.
+The following is a function call with a single argument.
 ]
 (println.fmt
   [This block is an expression.]
@@ -74,9 +74,7 @@ CONSTANT_UPPER_SNAKE_CASE
 Type_capital_snake_case
 ident_lower_snake_case
 
-[
-Abbreviations are considered regular words and obey the regular casing rules.
-]
+[Abbreviations are considered regular words and obey the regular casing rules.]
 json_encode
 json_decode
 Json_encoder
@@ -393,15 +391,16 @@ information.
 
 Example use cases:
 
-  * A custom string type impemented as a rope, where literal values of that type
-    can be written as regular strings.
+  * A custom string type implemented as a rope, where literal values of that
+    type can be written as regular strings.
 
   * A custom sequence type implemented as a rope, where literal values of that
     type can be written as regular slices.
 
   * Big integers or big floats, written using the normal numeric syntax, parsed
     with higher precision than machine numbers.
-_
+
+The uses are endless.
 ]
 
 [Example rope string type used below.]
@@ -505,7 +504,7 @@ This is a void statement that doesn't return a value.
 `set` reassigns a variable's value. The variable must have been previously
 declared.
 
-Note that unlike some languages such as Erlang and Haskell, we must have
+Note that unlike some languages such as Erlang, Haskell or Python, we must have
 distinct forms for variable declaration and assignment. We intend to allow
 procedural programming that involves variable reassignment. Declarations will be
 block scoped, while assignments may want to modify a variable in an outer scope,

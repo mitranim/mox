@@ -1,6 +1,8 @@
 package mox
 
 import (
+	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -8,10 +10,10 @@ import (
 func TestFormat(t *testing.T) {
 	ast := []Node{
 		NodeComment(`# comment`),
-		NodeWhitespace(` `),
+		NodeSpace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
-			NodeWhitespace(` `),
+			NodeSpace(` `),
 			NodeStringDouble(`hello world`),
 		},
 	}
@@ -45,14 +47,14 @@ func TestParseAndFormat(t *testing.T) {
 
 	expectedAst := []Node{
 		NodeComment(`# comment [nested]`),
-		NodeWhitespace(` `),
+		NodeSpace(` `),
 		NodeBlock{
 			NodeNumber(`123.456`),
-			NodeWhitespace(` `),
+			NodeSpace(` `),
 			NodeOperator(`++`),
-			NodeWhitespace(` `),
+			NodeSpace(` `),
 			NodeIdentifier(`ident`),
-			NodeWhitespace(` `),
+			NodeSpace(` `),
 			NodeStringDouble(`hello world`),
 		},
 	}
@@ -91,7 +93,7 @@ func TestParseAndFormatWithMinimalWhitespace(t *testing.T) {
 			NodeNumber(`789`),
 		},
 		NodeIdentifier(`five`),
-		NodeWhitespace(` `),
+		NodeSpace(` `),
 		NodeNumber(`012`),
 	}
 
@@ -149,4 +151,39 @@ func TestParseIncomplete(t *testing.T) {
 			t.Fatalf("expected parse error for %q, got parsed AST: %#v", source, ast)
 		}
 	})
+}
+
+func TestFmtMoxFile(t *testing.T) {
+	t.Skip()
+
+	const input = `fmt_test_input.mox`
+	const output = `fmt_test_output.mox`
+
+	content, err := ioutil.ReadFile(input)
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	ast, err := Parse(string(content))
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	FmtMox(ast)
+
+	file, err := os.Create(output)
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+	defer file.Close()
+
+	_, err = file.Write([]byte(Format(ast)))
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	err = file.Close()
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
 }

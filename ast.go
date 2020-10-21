@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -15,7 +14,7 @@ const BlockStart = `(`
 const BlockEnd = `)`
 
 type Node fmt.Stringer
-type NodeWhitespace string
+type NodeSpace string
 type NodeComment string
 type NodeNumber string
 type NodeStringDouble string
@@ -24,10 +23,10 @@ type NodeIdentifier string
 type NodeOperator string
 type NodeBlock []Node
 
-func (self NodeWhitespace) String() string   { return string(self) }
+func (self NodeSpace) String() string        { return string(self) }
 func (self NodeComment) String() string      { return CommentStart + string(self) + CommentEnd }
 func (self NodeNumber) String() string       { return string(self) }
-func (self NodeStringDouble) String() string { return strconv.Quote(string(self)) }
+func (self NodeStringDouble) String() string { return `"` + string(self) + `"` }
 func (self NodeStringGrave) String() string  { return "`" + string(self) + "`" }
 func (self NodeIdentifier) String() string   { return string(self) }
 func (self NodeOperator) String() string     { return string(self) }
@@ -74,8 +73,8 @@ func (self *Parser) PopNode() (_ Node, err error) {
 	}(self.Cursor)
 
 	switch {
-	case self.NextCharIn(charMapWhitespace):
-		return self.PopWhitespace()
+	case self.NextCharIn(charMapSpace):
+		return self.PopSpace()
 	case self.Next(CommentStart):
 		return self.PopComment()
 	case self.Next(`0b`):
@@ -101,13 +100,13 @@ func (self *Parser) PopNode() (_ Node, err error) {
 	}
 }
 
-func (self *Parser) PopWhitespace() (NodeWhitespace, error) {
+func (self *Parser) PopSpace() (NodeSpace, error) {
 	start := self.Cursor
-	for self.NextCharIn(charMapWhitespace) {
+	for self.NextCharIn(charMapSpace) {
 		self.AdvanceNextChar()
 	}
 
-	node := NodeWhitespace(self.From(start))
+	node := NodeSpace(self.From(start))
 	if len(node) == 0 {
 		return "", self.Error(fmt.Errorf(`expected whitespace, found %q`, self.Preview()))
 	}
@@ -422,14 +421,14 @@ func Format(nodes []Node) string {
 	for _, node := range nodes {
 		/**
 		Omitting nil can be convenient for AST editing. This allows to "remove" a
-		node by replacing it with nil, instead of using `NodeWhitespace("")` or
+		node by replacing it with nil, instead of using `NodeSpace("")` or
 		shifting the other nodes.
 		*/
 		if node == nil {
 			continue
 		}
 
-		if requiresWhitespaceInfix(prev, node) {
+		if requiresSpaceInfix(prev, node) {
 			out += ` `
 		}
 
@@ -440,7 +439,7 @@ func Format(nodes []Node) string {
 	return out
 }
 
-func requiresWhitespaceInfix(left Node, right Node) bool {
+func requiresSpaceInfix(left Node, right Node) bool {
 	return (isIdentifier(left) || isNumber(left)) &&
 		(isIdentifier(right) || isNumber(right))
 }
@@ -457,7 +456,7 @@ func isNumber(node Node) bool {
 
 func stringToBytesAlloc(input string) []byte { return []byte(input) }
 
-var charMapWhitespace = stringCharMap(" \n\r\t\v")
+var charMapSpace = stringCharMap(" \n\r\t\v")
 var charMapOperator = stringCharMap(`~!@#$%^&*:<>.?/\|=+-`)
 var charMapIdentifierStart = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_`)
 var charMapIdentifier = stringCharMap(`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789`)

@@ -32,24 +32,35 @@ interpretation) or literal byte slice constructors (language-specific).
 [## Comments]
 
 [
-Comments are enclosed in [] and always multiline. Nested comments are supported.
+Comments are enclosed in [] and always multi-line. Nested comments are
+supported.
 
-By convention, single-line comments should have NO leading or trailing spaces.
-This should be enforced by the formatter:
+By convention, single-line comments should have NO leading or trailing spaces or
+newlines. This should be enforced by the formatter:
 
-    [no space before, no space after]
+    [some text, some text]
 
-By convention, multiline comments should have leading and trailing newlines,
-with no unnecessary indentation or other noise before each line. The formatter
-should enforce leading and trailing newlines, but allow indentation, which is
-useful for code and other ASCII art:
+By convention, multi-line comments should not have additional indentation or
+other noise before lines. However, the formatter should allow indentation, which
+is useful for code snippets and other ASCII art.
+
+The formatter should either enforce or remove trailing and leading newlines. The
+preferred style hasn't been decided.
+
+    [some text
+    some text
+        markdown_indented_code_block
+    some text]
 
     [
-    some_text
-    some_text
+    some text
+    some text
         markdown_indented_code_block
-    some_text
+    some text
     ]
+
+The formatter should also un-nest unnecessary [[[]]] into [] to prevent weird
+conventions.
 
 Comments may be used to generate documentation. Most likely following the Go,
 Rust, Swift convention that a comment immediately followed by a named definition
@@ -147,8 +158,8 @@ grave string: supports newlines, but not escapes: \t \n
 `
 
 [
-All string literals are multiline. Single quotes are currently not supported and
-generate a parse error.
+All string literals are multi-line. Single quotes are currently not supported
+and generate a parse error.
 ]
 
 [## Identifiers]
