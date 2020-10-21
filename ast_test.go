@@ -124,3 +124,29 @@ func TestFormatAddingWhitespace(t *testing.T) {
 		t.Fatalf("expected formatted AST to be:\n%s\ngot:\n%s\n", expected, formatted)
 	}
 }
+
+func TestParseIncomplete(t *testing.T) {
+	t.Run("incomplete_block", func(t *testing.T) {
+		source := `(`
+		ast, err := Parse(source)
+		if err == nil {
+			t.Fatalf("expected parse error for %q, got parsed AST: %#v", source, ast)
+		}
+	})
+
+	t.Run("incomplete_string_double", func(t *testing.T) {
+		source := `"`
+		ast, err := Parse(source)
+		if err == nil {
+			t.Fatalf("expected parse error for %q, got parsed AST: %#v", source, ast)
+		}
+	})
+
+	t.Run("incomplete_string_grave", func(t *testing.T) {
+		source := "`"
+		ast, err := Parse(source)
+		if err == nil {
+			t.Fatalf("expected parse error for %q, got parsed AST: %#v", source, ast)
+		}
+	})
+}

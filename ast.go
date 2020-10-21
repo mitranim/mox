@@ -294,7 +294,7 @@ func (self *Parser) PopBlock() (Node, error) {
 	for self.More() {
 		if self.Next(BlockEnd) {
 			self.Advance(BlockEnd)
-			break
+			return nodes, nil
 		}
 
 		start := self.Cursor
@@ -306,7 +306,7 @@ func (self *Parser) PopBlock() (Node, error) {
 		nodes = append(nodes, node)
 	}
 
-	return nodes, nil
+	return nodes, self.Error(fmt.Errorf(`expected closing %q, found EOF`, BlockEnd))
 }
 
 func (self Parser) More() bool {
