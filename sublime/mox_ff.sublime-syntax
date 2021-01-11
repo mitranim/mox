@@ -1,0 +1,65 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base_lang.sublime-syntax
+scope: source.mox
+
+# "ff" stands for "freeform".
+
+contexts:
+  match-idents-other:
+    - include: match-def
+    - include: match-fn
+    - include: match-control
+    - include: match-template
+    - include: match-idents-any
+
+  match-def:
+    - match: '{{def_word}}'
+      scope: keyword.declaration.mox
+      push: pop-def
+
+  pop-def:
+    - include: match-prefix-namespace
+    - match: '{{entity}}'
+      scope: entity.name.mox
+      pop: true
+    - include: pop-before-nonblank
+
+  match-fn:
+    - match: \bfn\b
+      scope: keyword.declaration.function.mox
+      push: pop-fn
+      
+  pop-fn:
+    - match: ->(?!{{operator}})
+      scope: keyword.operator.mox
+      pop: true
+    - match: '{{ident}}'
+      scope: variable.parameter.mox
+    - include: pop-before-nonblank
+
+  match-control:
+    - match: '{{ident_control}}'
+      scope: keyword.control.mox
+
+  match-template:
+    - match: \b(template)\b\s+((")md("))\s*((")([^"]+)("))
+      captures:
+        1: variable.other.mox
+        2: string.quoted.double.mox
+        3: punctuation.definition.string.begin.mox
+        4: punctuation.definition.string.end.mox
+        5: string.quoted.double.mox
+        6: punctuation.definition.string.begin.mox
+        7: entity.name.tag.template.begin.mox
+        8: punctuation.definition.string.end.mox
+      embed: scope:text.html.markdown
+      embed_scope: text.html.markdown
+      escape: '\7'
+      escape_captures:
+        0: entity.name.tag.template.end.mox
+
+  match-idents-any:
+    - match: '{{ident}}'
+      scope: variable.other.mox

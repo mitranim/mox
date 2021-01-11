@@ -1,0 +1,80 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base_lang.sublime-syntax
+hidden: true
+scope: source.mox
+
+variables:
+  block_start: ''
+  block_end: ''
+
+contexts:
+  match-punctuation:
+    - include: match-block
+    - include: match-punctuation-base
+
+  match-block:
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.mox
+      push: pop-block-tail
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox invalid.illegal.mox
+
+  pop-block-tail:
+    - meta_scope: meta.block.mox meta.block.mox
+    - include: pop-block-end
+    - include: main
+
+  to-pop-block-tail:
+    - match: (?=\S)
+      set: pop-block-tail
+
+  pop-block-end:
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox
+      pop: true
+
+  match-idents:
+    - include: match-idents-call
+    - include: match-idents-base
+
+  match-idents-call:
+    - include: match-idents-call-def
+    - include: match-idents-call-fn
+    - include: match-idents-call-other
+
+  match-idents-call-def:
+    - match: ({{def_word}})\s*({{block_start}})
+      captures:
+        1: keyword.declaration.mox
+        2: punctuation.section.block.begin.mox
+      set: pop-entity-name-and-block-tail
+
+  pop-entity-name-and-block-tail:
+    - match: '{{entity}}'
+      scope: entity.name.mox
+      set: pop-block-tail
+    - include: to-pop-block-tail
+
+  match-idents-call-fn:
+    - match: \b(fn)\b\s*({{block_start}})
+      captures:
+        1: keyword.declaration.function.mox
+        2: punctuation.section.block.begin.mox
+      set: pop-fn-params-and-block-tail
+
+  pop-fn-params-and-block-tail:
+    - match: '{{ident}}'
+      scope: variable.parameter.mox
+    - match: '(?={{fn_break}})'
+      set: pop-block-tail
+    - include: pop-block-end
+    - include: main
+
+  match-idents-call-other:
+    - match: \b({{ident}})\b\s*({{block_start}})
+      captures:
+        1: variable.function.mox
+        2: punctuation.section.block.begin.mox
+      set: pop-block-tail

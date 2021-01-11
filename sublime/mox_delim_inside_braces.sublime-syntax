@@ -1,0 +1,9 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_delim_inside_base.sublime-syntax
+scope: source.mox
+
+variables:
+  block_start: \{
+  block_end: \}

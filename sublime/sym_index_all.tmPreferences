@@ -2,13 +2,13 @@
 <plist version="1.0">
 <dict>
   <key>scope</key>
-  <string>entity.name.function.fn.mox</string>
+  <string>entity.name.mox - meta.block meta.block</string>
   <key>settings</key>
   <dict>
     <key>showInSymbolList</key>
     <integer>1</integer>
-    <key>symbolTransformation</key>
-    <string><![CDATA[/^/fn /]]></string>
+    <key>showInIndexedSymbolList</key>
+    <integer>1</integer>
   </dict>
 </dict>
 </plist>

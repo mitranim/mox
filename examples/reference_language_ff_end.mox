@@ -1,0 +1,499 @@
+; # Level 1: see `reference_data_notation.mox`!
+
+; # Level 2: Language
+;
+; This level represents the syntax of a hypothetical language, which is defined
+; in terms of the Level 1 data notation. It doesn't have any syntactic features
+; that would require changing the parser.
+
+; ## General Structure
+
+; The language is mostly whitespace-insensitive, but space must be used to
+; separate forms that would otherwise combine, like adjacent numbers,
+; identifiers, operators.
+;
+; Everything is either a primitive literal, an ident or operator, or a block
+; enclosed in []. Other delimiters are not used. [] is used for grouping.
+;
+; There are NO RESERVED KEYWORDS. All built-ins are merely predeclared and may
+; be overridden. Built-ins don't have any special syntax.
+
+some_callable
+  some_callable 10 "20"
+  do
+    some_callable some_callable 10 "20"
+    some_val.some_method 10 "20"
+  end
+
+; Method chaining is inconvenient, and not encouraged.
+some_val.method_one arg_one .method_two arg_two .method_three arg_three
+
+List "value0" "value1" "value2" end
+
+Dict "key0" "value0" "key1" "value1" end
+
+Array 16 Int
+
+; The following is a function call with a single argument.
+fmt.println
+  ; The following is a single expression.
+  do
+    ; Side effect.
+    fmt.println "hello world"
+    ; Return value.
+    "20"
+  end
+
+; ## Naming Convention
+;
+; * Type names use `Capital_snake_case`.
+; * Constants use `UPPER_SNAKE_CASE`.
+; * Other identifiers use `lower_snake_case`.
+;
+; To avoid ambiguity with types, constant names must have at least two letters.
+;
+; Other case styles should be forbidden by the compiler and automatically
+; changed by the formatter.
+Type_capital_snake_case
+CONSTANT_UPPER_SNAKE_CASE
+ident_lower_snake_case
+
+; Abbreviations are considered regular words and obey the regular casing rules.
+json_encode
+json_decode
+Json_encoder
+Json_decoder
+
+; Boolean variables, functions, struct fields should start with `is_`:
+def is_deleted = true
+def is_deleted = fn val -> val.is_deleted
+
+; ## Calling
+
+some_func arg0 arg1
+some_value.some_method arg0 arg1
+some_macro some_expressions
+Some_type some_val
+
+one + two + three
+one && two && three
+
+one.two.three
+
+; Note on expressions. When converting the data notation AST to the language
+; AST, the compiler should group forms into expressions. Currently, only the
+; infix dot operator requires implicit grouping. Built-in special forms and
+; macros should operate on expressions, not data notation tokens.
+
+; ## Blocks
+;
+; There's no special syntax for blocks, but there may be a predeclared word for
+; denoting a free block:
+do
+  fmt.println "one"
+  fmt.println "two"
+  fmt.println "three"
+end
+
+fn -> do
+  fmt.println "one"
+  fmt.println "two"
+end
+
+; A block is an expression. The last expression implicitly becomes the block's
+; result.
+do
+  fmt.println "one"
+  fmt.println "two"
+  "three"
+end ; Returns "three".
+
+; Unused expressions should result in a compile error. All but last expression
+; must be void. If the last expression is void, the block is void.
+do
+  fmt.println "one"     ; Void, ok.
+  def local_var = "two" ; Void, ok.
+  "three"               ; Non-void, unused, COMPILE ERROR.
+  "four"                ; Non-void, becomes the block's result.
+end
+
+; ## Declarations
+;
+; One form for declaring ANYTHING is `def`. It declares types, constants,
+; variables, functions, operators, macros, and possibly more. It works in root
+; scope and local scope.
+def Some_type     = Int
+def Some_type     = Typedef Int
+def SOME_CONSTANT = "some_value"
+def some_variable = "some_value"
+def some_func = fn -> do
+  def local_var = "some_value"
+  local_var
+end
+
+; ### Declaration Meta
+;
+; Declarations may require various metadata, such as type, mutability, lifetime,
+; and possibly more. The syntax hasn't been defined yet. There are various
+; possibilities.
+;
+; An ideal solution to metadata would apply to `def`, function parameters, loop
+; locals, and more.
+;
+; We might place metadata before the declaration, like in Haskell or Typed
+; Racket:
+
+def some_variable Rope_string mut = "some_value"
+
+; We might choose to make metadata an optional part of `def`:
+def some_variable Rope_string mut = "some_value"
+def add Poly A -> A A -> A where [Add A] = fn a b -> a + b
+
+; `def` is technically not a reserved keyword, as there are NO RESERVED
+; KEYWORDS. It may be used for struct fields, local variables, etc.
+def Some_type = Struct def def String end
+def def = nil
+
+; ## Functions
+;
+; The language should have full type inference. In the simplest form, functions
+; can be declared without types. The last expression is implicitly returned:
+fn -> nil
+fn a -> a
+def add = fn a b -> a + b
+def sum = fn coll -> fold coll 0 add
+def sum = fn coll -> fold coll 0 fn a b -> a + b
+
+; The syntax for types and other metadata hasn't been decided yet. It must
+; support the following: parameter types, return type, type parameters
+; (for generic functions), contracts on type parameters, possibly parameter
+; mutability, whether a parameter must be passed by reference, possibly
+; parameter owneship and/or lifetime, and more. Unclear if we want to mix this
+; with parameters, or place it separately.
+;
+; See the previous section on declaration metadata. We may choose to declare
+; function signatures outside of functions.
+
+def some_func Poly A -> Fn [A move] = fn a -> do
+  fmt.println a
+  drop a
+end
+
+def some_func = poly A -> fn a A -> do
+  fmt.println a
+  drop a
+end
+
+def str_add Fn String inout -> String = fn a b -> strings.append a b
+
+; Example use:
+def str mut = "one"
+str_add str "two" ; `str` should become "onetwo"
+
+; `fn` is not a reserved keyword, as there are NO RESERVED KEYWORDS. It may be
+; used for struct fields, local variables, etc.
+def Struct_with_func = Struct def fn Some_fn_type end
+def fn = nil
+
+; ## Parametric Polymorphism
+;
+; The language should support some form of parametric polymorphism for functions
+; and types. This is also known as "generics".
+;
+; In addition, it should support associating multiple implementations with the
+; same function, either through methods and interfaces, or by overloading a
+; specific function on its first type parameter.
+;
+; The specific approach hasn't been decided yet. Some possibilities are shown
+; below.
+
+; Predeclared. Noop by default.
+def drop Poly A -> Fn A = fn _ -> nil
+def drop = poly A -> fn _ A -> nil
+
+; Specialize `drop` for `Box`.
+def drop Fn Box = fn box -> mem.free box.ptr
+
+; Specialize `drop` for `File`.
+def drop Fn File = fn file -> syscall.close file.descriptor
+
+; ## Type Definitions
+;
+; Types may be named or anonymous, concrete or parametrized.
+
+; Example named types:
+Int
+String
+
+; Some constructs denote an anonymous type:
+Struct
+  def field0 Type0
+  def field1 Type1
+end
+
+Variant Type0 Type1 Type2 end
+
+; Using `def` simply allows to access a type by a different name. The two are
+; completely interchangeable.
+def Str = String
+
+; Using `Typedef` defines a new type based on another, existing type. The other
+; type can be named or anonymous. Named example:
+def HttpStatusCode = Typedef Uint
+
+; Defining a type based on a constructed anonymous type:
+def String = Typedef Struct
+  def ptr Usize
+  def len Int
+end
+
+; We might define a shortcut for `Typedef`. This would be a regular macro,
+; rather than a special built-in. See below about macros.
+deftype HttpStatusCode = Uint
+
+; Types may be parametrized by other types or constants. Instantiation of a
+; parametrized type should use the "call" notation. It should be possible to
+; denote an anonymous type which is parametrized, mirroring the concept of
+; anonymous functions.
+
+deftype Dirty = poly A -> Struct
+  def val A
+  def ok Bool
+end
+
+deftype Str = Dirty String
+def str = Str val "hello world" ok true
+
+poly A -> Variant Nil A end
+deftype Opt = poly A -> Variant Nil A end
+deftype MaybeInt = Opt Int
+
+Array 16 Byte
+deftype Uuid = Array 16 Byte
+
+; The syntax for struct definitions hasn't been decided. Some possibilities are
+; shown below.
+Struct
+  def field_one Type0
+  def field_two Type1
+end
+Struct
+  def field_one = Type0  ; Default value, zero-init.
+  def field_two = Type1  ; Default value, zero-init.
+end
+
+; As shown above, variant types (also known as "sum" or "union" types) combine
+; multiple other types. All types in a variant must be unique.
+;
+; A variant type doesn't declare named subtypes for its variants. Instead, it
+; reuses existing types. Any type could occur in any number of variant types.
+;
+; Anonymous variant type:
+Variant Some_type Other_type end
+
+; Parametrized variant type:
+poly A -> Variant A B C end
+
+; Function types have their own notation. This notation may have to support type
+; parameters and constraints, metadata for value parameters such as mutability,
+; owneship, and more. This example is oversimplified:
+Fn ArgType0 ArgType1 -> RetType
+
+; The special built-in type `Nil` represents void. Nil is represented in machine
+; memory as all zeros for any given size, but in most contexts is not castable
+; to any other type. Variant types may include `Nil`, which may allow implicit
+; conversions from nil to variant.
+;
+; To prevent common errors, expressions of type `Nil` are considered "void", and
+; in most contexts their result can't be used. Conversely, expression results
+; which aren't `Nil` must always be used by other expressions. Unused non-void
+; expressions should trigger compile errors.
+;
+; The literal representation hasn't been decided. We might choose to allow the
+; literal construct `[Nil]`, or have a built-in constant `nil`, or both.
+Nil
+nil
+
+; It should be possible to associate metadata with struct fields. Public/private
+; is part of that metadata. Public is default, private is opt-in.
+;
+; The exact syntax for field metadata hasn't been decided. An ideal solution
+; would be consistent with metadata for `def` and function parameters. Some
+; possibilities are listed below.
+
+deftype Some_struct = Struct
+  def field_one   String     meta json "fieldOne"   db "field_one"   end
+  def field_two   Byte       meta json "fieldTwo"   db "field_two"   end
+  def field_three Bool       meta json "fieldThree" db "field_three" end
+  def lock        sync.Mutex meta priv true                          end
+end
+
+deftype Some_struct = Struct
+  ; Type-level metadata. Note that `priv` belongs in `def`, not here.
+  meta json "camel" db "snake" end
+
+  def field_one   String
+  def field_two   Byte
+  def field_three Bool
+  def lock        sync.Mutex
+end
+
+deftype Some_struct = Struct
+  fields
+    field_one   String
+    field_two   Byte
+    field_three Bool
+    lock        sync.Mutex
+  end
+  meta
+    field_one   = json "fieldOne"   db "field_one"   end
+    field_two   = json "fieldTwo"   db "field_two"   end
+    field_three = json "fieldThree" db "field_three" end
+    lock        = priv true                          end
+  end
+end
+
+; ## Type Usage
+;
+; It should be possible to instantiate any type by "calling" it. For
+; non-composite types such as integers or strings, this is simply a shortcut to
+; a cast. For composite types, the arguments are struct fields, array values,
+; dictionary key-values, and so on.
+;
+; The exact syntax for denoting a variable's type hasn't been decided yet. Some
+; possibilities are listed below.
+
+def val        = Int 10
+def val Int    =     10
+def val        = String "hello world"
+def val String =        "hello world"
+
+def val             = Array 4 Int 10 20 30 40 end
+def val Array 4 Int = _           10 20 30 40 end
+
+def val = Dict String Int
+  "one"   10
+  "two"   20
+  "three" 30
+end
+
+def val = Some_dict
+  "one"   10
+  "two"   20
+  "three" 30
+end
+
+def val = Some_struct
+  one   10
+  two   20
+  three 30
+end
+
+def val = Some_set 10 20 30 end
+
+; ## Literal Overloading
+;
+; The examples above require special overloading capabilities for types.
+;
+; First: overloading specific primitive literals for specific types. For
+; example, all built-in integer types are expressible with the same integer
+; syntax; the character type should be expressible with the string syntax. This
+; should be available to any "user-defined" type. The standard library is
+; considered "user-defined".
+;
+; When defining a custom type, we should be able to say that it's expressible
+; with a given primitive literal, and define a compile-time computation that
+; performs the conversion inside the compiler. User-defined code executed at
+; compile time is also known as "macros", see below.
+def int         = Int 10
+def uint        = Uint 10
+def big         = Big_int 10
+def char        = Char "a"                  ; Computed at compile time.
+def char        = Char "ab"                 ; Compile error.
+def rope        = Rope_string "hello world" ; Computed at compile time.
+def ident_regex = Regex `^\b\w+\b$`         ; Computed at compile time.
+
+; Second: overloading the "call" syntax for a specific type. Many types will be
+; internally implemented as structs, or pointers to structs, but the
+; user-facing API should simply "call" the type to construct a literal value.
+; This also requires a "backdoor" for bypassing the overload and specifying the
+; actual fields of the structure. The exact syntax hasn't been decided. This
+; feature is technically avoidable, by requiring such types to provide literal
+; constructors separately, as macros. It's unclear how much we want it.
+;
+; Example below.
+
+; Type implementation and call overloading are both elided. This is likely to be
+; a reference type rather than just a struct.
+deftype Dict = poly A B -> Struct ... end
+
+def My_dict_type = Dict String Int
+
+; Uses the overloaded literal syntax.
+def dict = My_dict_type
+  "one"   10
+  "two"   20
+  "three" 30
+end
+
+; ## Macros
+;
+; The language should allow to execute arbitrary computations at compile time.
+; The main use of such computations is macros: functions that take AST and
+; return AST.
+;
+; In addition to its inputs, a macro should have access to the information about
+; the current scope, including available variables, functions, types, imported
+; modules, etc., as well as metadata about each expression, such as its type.
+;
+; Technically, macros might not be limited to just AST operations. There might
+; be other interesting uses, for example involving IO.
+
+; Example SQL generation with a macro. This hypothetical `sql_query` macro
+; supports argument substitution (default) and text interpolation
+; (opt-in). Arguments are replaced with positional placeholders and added to
+; the argument slice. The returned object contains text and arguments.
+
+def table_name = "persons"
+
+def id = random_uuid
+
+def query = sql_query `
+  select col0, col1, col2
+  from ` text table_name `
+  where
+  id = ` id ` and
+  not is_deleted
+` end
+
+; `sql_query` returns a value of this type:
+deftype Sql_query = Struct
+  def text String
+  def args List Any
+end
+
+; Example XML generation with a hypothetical `xml` macro. Uses @ for
+; interpolation. The macro could be defined to return an AST or print a
+; string.
+xml
+  html
+    document
+      div
+        ; Attributes
+        : attr0 "value0" attr1 "value1" end
+
+        ; Nested element with a text node
+        span "text" end
+
+        ; Text node
+        "text"
+
+        ; Interpolation: variable
+        @var0
+
+        ; Interpolation: arbitrary expression (function or macro)
+        @[str var0 var1 var2]
+      end
+    end
+  end
+end

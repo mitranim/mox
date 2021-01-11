@@ -1,0 +1,221 @@
+%YAML 1.2
+---
+version: 2
+file_extensions: [mox]
+scope: source.mox
+
+variables:
+  comment_start: \;
+  ident_chars: _[:alnum:]
+  ident: \b[[:alpha:]_][{{ident_chars}}]*\b
+  operator_chars: '\~\!\@\#\$\%\^\&\*\:\<\>\.\?\/\\\|\=\+\-'
+  operator: '[{{operator_chars}}]+'
+  entity: '{{ident}}|{{operator}}'
+  char_escape: \\(?:.|\n)
+
+contexts:
+  prototype:
+    - include: match-comments
+
+  main:
+    - include: match-numbers
+    - include: match-strings
+    - include: match-operators
+    - include: match-punctuation
+    - include: match-idents
+
+  match-comments:
+    - include: match-line-comments
+
+  match-line-comments:
+    - match: '({{comment_start}})\s?((#+)\s*\S.*)(\n|$)'
+      scope: comment.line.mox
+      captures:
+        1: punctuation.definition.comment.begin.mox
+        2: markup.heading.mox
+        3: punctuation.definition.heading.begin.mox
+    - match: '({{comment_start}}).*(\n|$)'
+      scope: comment.line.mox
+      captures:
+        1: punctuation.definition.comment.begin.mox
+
+  match-numbers:
+    - include: match-numbers-bin
+    - include: match-numbers-oct
+    - include: match-numbers-hex
+    - include: match-numbers-dec
+
+  # TODO simplify.
+  match-numbers-bin:
+    - match: 0b(?![0-1])
+      scope: invalid.illegal.mox
+    # - match: 0b[0-1]+\.(?![0-1])
+    #   scope: invalid.illegal.mox
+    - match: (0b)[0-1]+(\.)[0-1]+([{{ident_chars}}]*)
+      scope: constant.numeric.binary.mox
+      captures:
+        1: punctuation.definition.numeric.binary.mox
+        2: punctuation.separator.decimal.mox
+        3: invalid.illegal.mox
+    - match: (0b)[0-1]+([{{ident_chars}}]*)
+      scope: constant.numeric.binary.mox
+      captures:
+        1: punctuation.definition.numeric.binary.mox
+        2: invalid.illegal.mox
+
+  # TODO simplify.
+  match-numbers-oct:
+    - match: 0o(?![0-7])
+      scope: invalid.illegal.mox
+    # - match: 0o[0-7]+\.(?![0-7])
+    #   scope: invalid.illegal.mox
+    - match: (0o)[0-7]+(\.)[0-7]+([{{ident_chars}}]*)
+      scope: constant.numeric.octal.mox
+      captures:
+        1: punctuation.definition.numeric.octal.mox
+        2: punctuation.separator.decimal.mox
+        3: invalid.illegal.mox
+    - match: (0o)[0-7]+([{{ident_chars}}]*)
+      scope: constant.numeric.octal.mox
+      captures:
+        1: punctuation.definition.numeric.octal.mox
+        2: invalid.illegal.mox
+
+  # TODO simplify.
+  match-numbers-hex:
+    - match: 0h(?![0-9a-f])
+      scope: invalid.illegal.mox
+    # - match: 0h[0-9a-f]+\.(?![0-9a-f])
+    #   scope: invalid.illegal.mox
+    - match: (0h)[0-9a-f]+(\.)[0-9a-f]+([{{ident_chars}}]*)
+      scope: constant.numeric.hex.mox
+      captures:
+        1: punctuation.definition.numeric.hex.mox
+        2: punctuation.separator.decimal.mox
+        3: invalid.illegal.mox
+    - match: (0h)[0-9a-f]+([{{ident_chars}}]*)
+      scope: constant.numeric.hex.mox
+      captures:
+        1: punctuation.definition.numeric.hex.mox
+        2: invalid.illegal.mox
+
+  # TODO simplify.
+  match-numbers-dec:
+    # - match: \d+\.(?!\d)
+    #   scope: invalid.illegal.mox
+    - match: \d+(\.)\d+([{{ident_chars}}]*)
+      scope: constant.numeric.decimal.mox
+      captures:
+        1: punctuation.separator.decimal.mox
+        2: invalid.illegal.mox
+    - match: \d+([{{ident_chars}}]*)
+      scope: constant.numeric.decimal.mox
+      captures:
+        1: invalid.illegal.mox
+
+  match-strings:
+    - include: match-strings-double
+    - include: match-strings-grave
+
+  match-strings-double:
+    - match: '"'
+      scope: punctuation.definition.string.begin.mox
+      push: pop-strings-double
+
+  pop-strings-double:
+    - meta_include_prototype: false
+    - meta_scope: string.quoted.double.mox
+    - match: '"'
+      scope: punctuation.definition.string.end.mox
+      pop: true
+    - match: '{{char_escape}}'
+      scope: constant.character.escape.mox
+
+  match-strings-grave:
+    - match: '`'
+      scope: punctuation.definition.string.begin.mox
+      push: pop-strings-grave
+
+  pop-strings-grave:
+    - meta_include_prototype: false
+    - meta_scope: string.quoted.other.mox
+    - match: '`'
+      scope: punctuation.definition.string.end.mox
+      pop: true
+
+  match-operators:
+    - include: match-operators-base
+
+  match-operators-base:
+    - match: '[{{operator_chars}}]*\.(?=\d)'
+      scope: invalid.illegal.mox
+    - match: '{{operator}}'
+      scope: keyword.operator.mox
+
+  match-punctuation:
+    - include: match-punctuation-base
+
+  match-punctuation-base:
+    - include: match-commas
+    - include: match-parens
+    - include: match-brackets
+    - include: match-braces
+
+  # Just for experimentation. Not in the spec. Should remove later.
+  match-commas:
+    - match: \,
+      scope: punctuation.separator.sequence.mox
+
+  match-parens:
+    - match: \(
+      scope: punctuation.section.parens.begin.mox
+      push: pop-parens
+    - match: \)
+      scope: punctuation.section.parens.end.mox invalid.illegal.mox
+
+  pop-parens:
+    - meta_scope: meta.parens.mox
+    - match: \)
+      scope: punctuation.section.parens.end.mox
+      pop: true
+    - include: main
+
+  match-brackets:
+    - match: \[
+      scope: punctuation.section.brackets.begin.mox
+      push: pop-brackets
+    - match: \]
+      scope: punctuation.section.brackets.end.mox invalid.illegal.mox
+
+  pop-brackets:
+    - meta_scope: meta.brackets.mox
+    - match: \]
+      scope: punctuation.section.brackets.end.mox
+      pop: true
+    - include: main
+
+  match-braces:
+    - match: \{
+      scope: punctuation.section.braces.begin.mox
+      push: pop-braces
+    - match: \}
+      scope: punctuation.section.braces.end.mox invalid.illegal.mox
+
+  pop-braces:
+    - meta_scope: meta.braces.mox
+    - match: \}
+      scope: punctuation.section.braces.end.mox
+      pop: true
+    - include: main
+
+  match-idents:
+    - include: match-idents-other
+
+  match-idents-other:
+    - match: '{{ident}}'
+      scope: variable.other.mox
+
+  # Used in subsyntaxes.
+  pop-before-nonblank:
+    - match: (?=\S)
+      pop: true

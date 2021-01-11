@@ -1,0 +1,87 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base_lang.sublime-syntax
+hidden: true
+scope: source.mox
+
+variables:
+  block_start: ''
+  block_end: ''
+
+contexts:
+  match-punctuation:
+    - include: match-block
+    - include: match-punctuation-base
+
+  match-block:
+    - match: '{{block_start}}'
+      scope: punctuation.section.block.begin.mox
+      push: pop-block-head
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox invalid.illegal.mox
+
+  pop-block-head:
+    - include: match-block-head-accessor
+    - include: match-block-head-caller
+    - include: match-block-head-def
+    - include: match-block-head-fn
+    - include: match-block-head-other
+    - include: to-pop-block-tail
+
+  pop-block-tail:
+    - meta_scope: meta.block.mox
+    - include: pop-block-end
+    - include: main
+
+  to-pop-block-tail:
+    - match: (?=\S)
+      set: pop-block-tail
+
+  pop-block-end:
+    - match: '{{block_end}}'
+      scope: punctuation.section.block.end.mox
+      pop: true
+
+  match-block-head-other:
+    - include: match-prefix-namespace
+    - match: '{{ident_control}}'
+      scope: keyword.control.mox
+      set: pop-block-tail
+    - match: '{{ident_blank}}'
+      scope: variable.language.blank.mox
+      set: pop-block-tail
+    - match: '{{entity}}'
+      scope: variable.function.mox
+      set: pop-block-tail
+
+  match-block-head-accessor:
+    - match: '({{accessor}})\s*({{ident}})'
+      captures:
+        1: punctuation.accessor.mox
+        2: variable.function.mox
+      set: pop-block-tail
+
+  match-block-head-caller:
+    - match: '({{caller}})\s*({{ident}})'
+      captures:
+        1: variable.function.mox
+        2: variable.function.mox
+      set: pop-block-tail
+
+  match-block-head-def:
+    - match: '{{def_word}}'
+      scope: keyword.declaration.mox
+      set: pop-entity-name-and-block-tail
+
+  pop-entity-name-and-block-tail:
+    - include: match-prefix-namespace
+    - match: '{{entity}}'
+      scope: entity.name.mox
+      set: pop-block-tail
+    - include: to-pop-block-tail
+
+  match-block-head-fn:
+    - match: \bfn\b
+      scope: keyword.declaration.function.mox
+      set: pop-block-tail

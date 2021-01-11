@@ -1,0 +1,68 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base.sublime-syntax
+scope: source.mox
+
+variables:
+  # TODO consider dropping.
+  ident_type: \b[[:upper:]][[:alnum:]_]*\b
+  # TODO consider dropping.
+  ident_const: \b[[:upper:]][[:upper:][:digit:]_]*[[:upper:]][[:upper:][:digit:]_]*\b
+  ident_control: \b(?:try(?:_[{{ident_chars}}]*)?|do|ret|break|continue|end)\b
+  ident_blank: \b_\b
+  fn_break: '->(?!{{operator}})'
+  accessor: \.(?!{{operator}})
+  caller: ':(?!{{operator}})'
+
+  # Flexible convention for declaration "keywords".
+  # Suspicious special-casing...
+  def_word: \bdef(?!ault|er)[{{ident_chars}}]*\b
+
+contexts:
+  match-operators:
+    - include: match-accessor
+    - include: match-operators-base
+
+  match-accessor:
+    - match: '{{accessor}}'
+      scope: punctuation.accessor.mox
+
+  match-idents:
+    - include: match-idents-base
+
+  match-idents-base:
+    - include: match-idents-call
+    - include: match-idents-const-predeclared
+    # - include: match-idents-const
+    # - include: match-idents-type
+    - include: match-idents-blank
+    - include: match-idents-other
+
+  match-idents-call: []
+
+  match-idents-const-predeclared:
+    - match: \b(?:true|false|nil)\b
+      scope: constant.language.mox
+
+  # # TODO consider dropping.
+  # match-idents-const:
+  #   - match: '{{ident_const}}'
+  #     scope: variable.other.constant.mox
+
+  # # TODO consider dropping.
+  # match-idents-type:
+  #   - match: '{{ident_type}}'
+  #     scope: storage.type.mox
+
+  match-idents-blank:
+    - match: '{{ident_blank}}'
+      scope: variable.language.blank.mox
+
+  # Used by subsyntaxes.
+  match-prefix-namespace:
+    # Buggy when `entity` may also contain `accessor`.
+    - match: '({{entity}})\s*({{accessor}})'
+      captures:
+        1: variable.other.mox
+        2: punctuation.accessor.mox

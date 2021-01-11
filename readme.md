@@ -1,22 +1,22 @@
 ## Overview
 
-Scratch for experimental language syntax.
+Scratch for an experimental language syntax.
 
-To enable in Sublime Text, symlink this folder into packages. MacOS version:
+The Sublime Text syntax implementation **requires ST >= 4075**. To enable, symlink this folder into packages. MacOS version:
 
-    ln -sf "$(pwd)" "$HOME/Library/Application Support/Sublime Text 3/Packages/"
+    ln -sf "$(pwd)/sublime" "$HOME/Library/Application Support/Sublime Text 3/Packages/mox"
 
 ## Levels
 
 The syntax has two levels:
 
-* Language-independent data notation. See `reference_data_notation.mox`.
+* Language-independent data notation. See `examples/reference_data_notation.mox`.
 
-* Some hypothetical language. See `reference_language.nox`.
+* Some hypothetical language. See `examples/reference_language*`.
 
 ## Inspiration
 
-In no particular order: Clojure and other Lisps, Erlang, Go, Haskell, Rust, and more.
+In no particular order: Lisps, Rebol, Erlang, Go, Haskell, Rust, and more.
 
 ## Semantics
 
@@ -26,16 +26,16 @@ This repo is dedicated to syntax. Language semantics are mentioned only where re
 
 Syntax and conventions are designed using _objective_ metrics: less thinking, less typing, fewer typing errors, easy-to-modify code.
 
-Only one delimiter (`()`) → less thinking, easier typing.
+Only one delimiter (`[]`) → less thinking, easier typing.
 
 No unnecessary punctuation → less thinking, less typing, fewer errors, easier to modify.
 
 Explicit delimiters → easier to modify, because of special editor support for delimiters.
 
-Placing delimiters on separate lines → easier to modify intermediary code.
+Placing closing delimiters on separate lines → easier to modify intermediary code.
 
 Only prefix calls → less thinking, no infix precedence errors.
 
 Simple universal structure → better for DSLs.
 
-Choice of `()` over `{}` and `[]`: simpler characters, easier to write by hand.
+Choice of `[]` over `()` and `{}`: easier to type on most keyboard layouts.
