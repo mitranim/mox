@@ -24,7 +24,8 @@
     ]]></string>
 
     <key>decreaseIndentPattern</key>
-    <string>[^\[]*\]</string>
+    <!-- <string>[^\[]*\]</string> -->
+    <string>\s*\]</string>
 
     <key>bracketIndentNextLinePattern</key>
     <string></string>

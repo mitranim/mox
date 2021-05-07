@@ -21,7 +21,7 @@
 ; other sections.
 ;
 ; There are NO RESERVED KEYWORDS. All built-ins are merely predeclared and may
-; be overridden. Built-ins don't have any special syntax.
+; be replaced. Built-ins don't have any special syntax.
 
 [some_callable
   [some_callable 10 "20"]
@@ -126,7 +126,7 @@ one.two.three
 ; must be void. If the last expression is void, the block is void.
 [do
   [fmt.println "one"]   ; Void, ok.
-  [def local_var "two"] ; Void, ok.
+  [def local_var "two"] ; Void, ok; unused var, COMPILE ERROR.
   "three"               ; Non-void, unused, COMPILE ERROR.
   "four"                ; Non-void, becomes the block's result.
 ]
@@ -271,26 +271,26 @@ String
 
 ; We might define a shortcut for `Typedef`. This would be a regular macro,
 ; rather than a special built-in. See below about macros.
-[deftype HttpStatusCode Uint]
+[def_type HttpStatusCode Uint]
 
 ; Types may be parametrized by other types or constants. Instantiation of a
 ; parametrized type should use the "call" notation. It should be possible to
 ; denote an anonymous type which is parametrized, mirroring the concept of
 ; anonymous functions.
 
-[deftype Dirty [poly A -> [Struct
+[def_type Dirty [poly A -> [Struct
   [def val A]
   [def ok Bool]
 ]]]
-[deftype Str [Dirty String]]
+[def_type Str [Dirty String]]
 [def str [Str val "hello world" ok true]]
 
 [poly A -> [Variant Nil A]]
-[deftype Opt [poly A -> [Variant Nil A]]]
-[deftype MaybeInt [Opt Int]]
+[def_type Opt [poly A -> [Variant Nil A]]]
+[def_type MaybeInt [Opt Int]]
 
 [Array 16 Byte]
-[deftype Uuid [Array 16 Byte]]
+[def_type Uuid [Array 16 Byte]]
 
 ; The syntax for struct definitions hasn't been decided. Some possibilities are
 ; shown below.
@@ -352,14 +352,14 @@ nil
 ; would be consistent with metadata for `def` and function parameters. Some
 ; possibilities are listed below.
 
-[deftype Some_struct [Struct
+[def_type Some_struct [Struct
   [def field_one   String     [meta json "fieldOne"   db "field_one"]]
   [def field_two   Byte       [meta json "fieldTwo"   db "field_two"]]
   [def field_three Bool       [meta json "fieldThree" db "field_three"]]
   [def lock        sync.Mutex [meta priv true]]
 ]]
 
-[deftype Some_struct [Struct
+[def_type Some_struct [Struct
   ; Type-level metadata. Note that `priv` belongs in `def`, not here.
   [meta json "camel" db "snake"]
 
@@ -369,7 +369,7 @@ nil
   [def lock        sync.Mutex]
 ]]
 
-[deftype Some_struct [Struct
+[def_type Some_struct [Struct
   [fields
     field_one   String
     field_two   Byte
@@ -456,7 +456,7 @@ nil
 
 ; Type implementation and call overloading are both elided. This is likely to be
 ; a reference type rather than just a struct.
-[deftype Dict [poly A B -> [Struct ...]]
+[def_type Dict [poly A B -> [Struct ...]]
 
 [def My_dict_type [Dict String Int]]
 
@@ -498,7 +498,7 @@ nil
 `]]
 
 ; `sql_query` returns a value of this type:
-[deftype Sql_query [Struct
+[def_type Sql_query [Struct
   [def text String]
   [def args [List Any]]
 ]]

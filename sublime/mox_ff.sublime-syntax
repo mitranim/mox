@@ -9,6 +9,8 @@ scope: source.mox
 contexts:
   match-idents-other:
     - include: match-def
+    - include: match-dec
+    - include: match-cast
     - include: match-fn
     - include: match-control
     - include: match-template
@@ -23,6 +25,39 @@ contexts:
     - include: match-prefix-namespace
     - match: '{{entity}}'
       scope: entity.name.mox
+      set: pop-def-meta
+    - include: pop-before-nonblank
+
+  pop-def-meta:
+    - include: match-prefix-namespace
+    - match: '{{ident_type}}'
+      scope: storage.type.mox
+    - match: '{{ident}}'
+      scope: storage.modifier.mox
+    - include: pop-before-nonblank
+
+  match-dec:
+    - match: \bdec\b
+      scope: keyword.declaration.mox
+      push: pop-dec
+
+  # Incomplete: doesn't scope types.
+  pop-dec:
+    - include: match-prefix-namespace
+    - match: '{{entity}}'
+      scope: entity.name.mox
+      pop: true
+    - include: pop-before-nonblank
+
+  match-cast:
+    - match: \bcast\b
+      scope: keyword.other.mox
+      push: pop-cast
+
+  pop-cast:
+    - include: match-prefix-namespace
+    - match: '{{ident_type}}'
+      scope: storage.type.mox
       pop: true
     - include: pop-before-nonblank
 
@@ -61,5 +96,7 @@ contexts:
         0: entity.name.tag.template.end.mox
 
   match-idents-any:
+    - match: \bmut\b
+      scope: keyword.other.mox
     - match: '{{ident}}'
       scope: variable.other.mox

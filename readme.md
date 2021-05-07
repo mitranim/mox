@@ -4,7 +4,7 @@ Scratch for an experimental language syntax.
 
 The Sublime Text syntax implementation **requires ST >= 4075**. To enable, symlink this folder into packages. MacOS version:
 
-    ln -sf "$(pwd)/sublime" "$HOME/Library/Application Support/Sublime Text 3/Packages/mox"
+    ln -sf "$(pwd)/sublime" "$HOME/Library/Application Support/Sublime Text/Packages/mox"
 
 ## Levels
 

@@ -6,7 +6,7 @@
 ]]
 
 [create_table idents
-  [cols
+  [columns
     id                    [uuid       primary_key [default [gen_random_uuid]]]
     type                  [ident_type not_null]
     person_id             [uuid       null unique [references persons] [on_update cascade] [on_delete cascade]]

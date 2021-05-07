@@ -22,7 +22,7 @@ contexts:
       scope: punctuation.section.block.end.mox invalid.illegal.mox
 
   pop-block-tail:
-    - meta_scope: meta.block.mox meta.block.mox
+    - meta_scope: meta.block.mox
     - include: pop-block-end
     - include: main
 
@@ -49,7 +49,7 @@ contexts:
       captures:
         1: keyword.declaration.mox
         2: punctuation.section.block.begin.mox
-      set: pop-entity-name-and-block-tail
+      push: pop-entity-name-and-block-tail
 
   pop-entity-name-and-block-tail:
     - match: '{{entity}}'
@@ -62,7 +62,7 @@ contexts:
       captures:
         1: keyword.declaration.function.mox
         2: punctuation.section.block.begin.mox
-      set: pop-fn-params-and-block-tail
+      push: pop-fn-params-and-block-tail
 
   pop-fn-params-and-block-tail:
     - match: '{{ident}}'
@@ -77,4 +77,4 @@ contexts:
       captures:
         1: variable.function.mox
         2: punctuation.section.block.begin.mox
-      set: pop-block-tail
+      push: pop-block-tail

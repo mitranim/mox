@@ -9,15 +9,14 @@ variables:
   ident_type: \b[[:upper:]][[:alnum:]_]*\b
   # TODO consider dropping.
   ident_const: \b[[:upper:]][[:upper:][:digit:]_]*[[:upper:]][[:upper:][:digit:]_]*\b
-  ident_control: \b(?:try(?:_[{{ident_chars}}]*)?|do|ret|break|continue|end)\b
+  ident_control: \b(?:try(?:_[{{ident_chars}}]*)?|do|ret|break|continue|end|if|cond|when|then|else)\b
   ident_blank: \b_\b
   fn_break: '->(?!{{operator}})'
   accessor: \.(?!{{operator}})
   caller: ':(?!{{operator}})'
 
   # Flexible convention for declaration "keywords".
-  # Suspicious special-casing...
-  def_word: \bdef(?!ault|er)[{{ident_chars}}]*\b
+  def_word: \b(?:def|defn|def_[{{ident_chars}}]*)\b
 
 contexts:
   match-operators:
