@@ -1,0 +1,50 @@
+create_type ident_type enum [
+  "email_login"
+  "email_change"
+  "facebook"
+  "google"
+]
+
+create_table idents [
+  columns [
+    id                    uuid       [primary_key default gen_random_uuid]
+    type                  ident_type [not_null]
+    person_id             uuid       [null unique references persons [id] on_update cascade on_delete cascade]
+    email                 email      [null]
+    external_id           text       [null]
+    external_profile_json jsonb      [null]
+    oauth_access_token    short_text [not_null check [oauth_access_token <> ""]]
+    oauth_refresh_token   short_text [not_null check [oauth_refresh_token <> ""]]
+  ]
+
+  constraint `db.constraint._` check case type [
+    when "email_login" then and [
+      is_null     person_id
+      is_not_null email
+      is_null     external_id
+      is_null     external_profile_json
+    ]
+    when "email_change" then and [
+      is_not_null person_id
+      is_not_null email
+      is_null     external_id
+      is_null     external_profile_json
+    ]
+    when "facebook" then and [
+      is_not_null person_id
+      is_null     email
+      is_not_null external_id
+      is_not_null external_profile_json
+    ]
+    when "google" then and [
+      is_not_null person_id
+      is_null     email
+      is_not_null external_id
+      is_not_null external_profile_json
+    ]
+  ]
+]
+
+create_unique_index `db.index._` idents [person_id]   [where in ["facebook" "google"] type]
+create_unique_index `db.index._` idents [external_id] [where in ["facebook"]          type]
+create_unique_index `db.index._` idents [external_id] [where in ["google"]            type]
