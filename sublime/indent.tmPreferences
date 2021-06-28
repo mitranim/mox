@@ -8,24 +8,30 @@
   <dict>
     <key>increaseIndentPattern</key>
     <string><![CDATA[(?x)
-      # TODO support all sets of delimiters.
-
-      # Content in matched block delimiters or arbitrary other content, greedy.
-      (?<re0> \[\g<re0>*\] | [^\[\]] )*+
-
-      # Unmatched opening block delimiter.
-      \[
-
-      # Content in matched block delimiters or arbitrary other content, greedy.
-      (?<re1> \[\g<re1>*\] | [^\[\]] )*+
-
-      # Another unmatched opening block delimiter or EOL.
-      (?:\[|$)
+      (?:
+        (?<re0> \(\g<re0>*\) | [^\(\)] )*+
+        \(
+        (?<re1> \(\g<re1>*\) | [^\(\)] )*+
+        (?:\(|$)
+      )
+      |
+      (?:
+        (?<re2> \[\g<re2>*\] | [^\[\]] )*+
+        \[
+        (?<re3> \[\g<re3>*\] | [^\[\]] )*+
+        (?:\[|$)
+      )
+      |
+      (?:
+        (?<re4> \{\g<re4>*\} | [^\{\}] )*+
+        \{
+        (?<re5> \{\g<re5>*\} | [^\{\}] )*+
+        (?:\{|$)
+      )
     ]]></string>
 
     <key>decreaseIndentPattern</key>
-    <!-- <string>[^\[]*\]</string> -->
-    <string>\s*\]</string>
+    <string>(?x) [^\(\)]*\) | [^\[\]]*\] | [^\{\}]*\}</string>
 
     <key>bracketIndentNextLinePattern</key>
     <string></string>

@@ -456,7 +456,7 @@ nil
 
 ; Type implementation and call overloading are both elided. This is likely to be
 ; a reference type rather than just a struct.
-[def_type Dict [poly A B -> [Struct ...]]
+[def_type Dict [poly A B -> [Struct ...]]]
 
 [def My_dict_type [Dict String Int]]
 
