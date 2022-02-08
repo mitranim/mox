@@ -65,7 +65,7 @@ contexts:
     - match: \bfn\b
       scope: keyword.declaration.function.mox
       push: pop-fn
-      
+
   pop-fn:
     - match: ->(?!{{operator}})
       scope: keyword.operator.mox

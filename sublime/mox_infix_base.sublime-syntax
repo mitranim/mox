@@ -11,7 +11,7 @@ variables:
 contexts:
   match-idents-call:
     - include: match-idents-call-def
-    - include: match-idents-call-fn
+    # - include: match-idents-call-fn
     - include: match-idents-call-other
 
   match-idents-call-def:

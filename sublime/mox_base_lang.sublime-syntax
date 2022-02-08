@@ -16,7 +16,7 @@ variables:
   caller: ':(?!{{operator}})'
 
   # Flexible convention for declaration "keywords".
-  def_word: \b(?:def|defn|def_[{{ident_chars}}]*)\b
+  def_word: \b(?:def|defn|defun|defunc|def_[{{ident_chars}}]*)\b
 
 contexts:
   match-operators:
