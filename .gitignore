@@ -1,5 +1,10 @@
 /*
-!/ast
+!/archive
+/archive/*
+!/archive/ast
+!/archive/examples
+!/archive/sublime
+!/archive/*.md
 !/examples
 !/sublime
 !/*rc
