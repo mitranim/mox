@@ -9,40 +9,40 @@ variables:
   call_op: ''
 
 contexts:
-  match-idents-call:
-    - include: match-idents-call-def
-    # - include: match-idents-call-fn
-    - include: match-idents-call-other
+  ident-call-match:
+    - include: ident-call-def-match
+    # - include: ident-call-fn-match
+    - include: ident-call-other-match
 
-  match-idents-call-def:
+  ident-call-def-match:
     - match: ({{def_word}})\s*({{call_op}})(?!{{operator}})
       captures:
         1: keyword.declaration.mox
         2: keyword.operator.mox
-      push: pop-def
+      push: def-pop
 
-  pop-def:
+  def-pop:
     - match: '{{ident}}'
       scope: entity.name.mox
-      pop: true
-    - include: pop-before-nonblank
+      pop: 1
+    - include: nonblank-pop
 
-  match-idents-call-fn:
+  ident-call-fn-match:
     - match: \b(fn)\b\s*({{call_op}})(?!{{operator}})
       captures:
         1: keyword.declaration.function.mox
         2: keyword.operator.mox
-      push: pop-fn
+      push: fn-pop
 
-  pop-fn:
+  fn-pop:
     - match: '{{ident}}'
       scope: variable.parameter.mox
     - match: '{{fn_break}}'
       scope: keyword.operator.mox
-      pop: true
+      pop: 1
     - include: main
 
-  match-idents-call-other:
+  ident-call-other-match:
     - match: ({{ident}})\s*({{call_op}})(?!{{operator}})
       captures:
         1: variable.function.mox

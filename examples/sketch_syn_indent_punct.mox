@@ -1,0 +1,34 @@
+| Extends `./sketch_syn_indent_base.mox`.
+| 
+| # Overview
+| 
+| Extensions to the base syntax:
+|
+| * Punctuation for flattening multi-line into single-line:
+|   * `,` = newline, same indent.
+|   * `;` = newline, unindent by 1.
+|   * `:` = newline, indent by 1.
+|
+| This punctuation extension technically allows to convert any multi-line code
+| to single-line (eliding comments which require newlines). However, in
+| practice, such code may be unusable for humans. See below.
+
+| Canonical form:
+fun_0
+  arg_0
+  fun_1
+    arg_2
+  arg_3
+fun_4
+
+| Flat form:
+fun_0: arg_0, fun_1: arg_2; arg_3;
+fun_4
+
+| As shown above, this requires the code's writers and readers to count
+| indentation levels incremented via `:` and decremented via `;`. This is easy
+| enough for computers, but difficult for humans. One of the goals of this
+| syntax is to avoid delimiters, but in this example, delimiter-based syntax
+| would be easier:
+fun_0[arg_0 fun_1[arg_2] arg_3]
+fun_4[]

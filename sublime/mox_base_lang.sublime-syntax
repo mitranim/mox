@@ -19,47 +19,45 @@ variables:
   def_word: \b(?:def|defn|defun|defunc|def_[{{ident_chars}}]*)\b
 
 contexts:
-  match-operators:
-    - include: match-accessor
-    - include: match-operators-base
+  op-match:
+    - meta_prepend: true
+    - include: accessor-match
 
-  match-accessor:
+  accessor-match:
     - match: '{{accessor}}'
       scope: punctuation.accessor.mox
 
-  match-idents:
-    - include: match-idents-base
+  ident-match:
+    - meta_prepend: true
+    - include: ident-call-match
+    - include: ident-const-predeclared-match
+    # - include: ident-const-match
+    # - include: ident-type-match
+    - include: ident-blank-match
+    - include: ident-other-match
 
-  match-idents-base:
-    - include: match-idents-call
-    - include: match-idents-const-predeclared
-    # - include: match-idents-const
-    # - include: match-idents-type
-    - include: match-idents-blank
-    - include: match-idents-other
+  ident-call-match: []
 
-  match-idents-call: []
-
-  match-idents-const-predeclared:
+  ident-const-predeclared-match:
     - match: \b(?:true|false|nil)\b
       scope: constant.language.mox
 
   # # TODO consider dropping.
-  # match-idents-const:
+  # ident-const-match:
   #   - match: '{{ident_const}}'
   #     scope: variable.other.constant.mox
 
   # # TODO consider dropping.
-  # match-idents-type:
+  # ident-type-match:
   #   - match: '{{ident_type}}'
   #     scope: storage.type.mox
 
-  match-idents-blank:
+  ident-blank-match:
     - match: '{{ident_blank}}'
       scope: variable.language.blank.mox
 
   # Used by subsyntaxes.
-  match-prefix-namespace:
+  prefix-namespace-match:
     # Buggy when `entity` may also contain `accessor`.
     - match: '({{entity}})\s*({{accessor}})'
       captures:

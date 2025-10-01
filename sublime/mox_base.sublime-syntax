@@ -5,7 +5,22 @@ file_extensions: [mox]
 scope: source.mox
 
 variables:
-  comment_start: \;
+  comment_fence: (?:\||;)
+
+  # TODO should probably avoid lookahead and lookbehind here.
+  # This raises the bar for language parser and other editors.
+  # Users should avoid generating code that relies on this.
+  comment_fence_start: (?<!{{comment_fence}})({{comment_fence}}{2,}(?!{{comment_fence}}))
+  comment_fence_end: (?<!{{comment_fence}})\1(?!{{comment_fence}})
+
+  # If we remove line and block comments, we can use this for fences.
+  # comment_fence_start: ({{comment_fence}}{1,})
+  # comment_fence_end: \1
+
+  comment_line_start: (?<!\|)\|(?!\|)
+  comment_block_start: '{{'
+  comment_block_end: '}}'
+
   ident_chars: _[:alnum:]
   ident: \b[[:alpha:]_][{{ident_chars}}]*\b
   operator_chars: '\~\!\@\#\$\%\^\&\*\:\<\>\.\?\/\\\|\=\+\-'
@@ -16,41 +31,84 @@ variables:
   int_oct: '(?:[0-7][0-7_]*)'
   int_dec: '(?:[0-9][0-9_]*)'
   int_hex: '(?:[0-9a-f][0-9a-f_]*)'
+  eol: (?:\n|$)
+  md_heading: ((#+)\s*\S.*){{eol}}
 
 contexts:
   prototype:
-    - include: match-comments
+    - include: comment-match
 
   main:
-    - include: match-numbers
-    - include: match-strings
-    - include: match-operators
-    - include: match-punctuation
-    - include: match-idents
+    - include: number-match
+    - include: string-match
+    - include: ident-match
+    - include: punct-match
+    - include: op-match
 
-  match-comments:
-    - include: match-line-comments
+  comment-match:
+    - include: comment-fenced-match
+    - include: comment-line-match
+    - include: comment-block-match
 
-  match-line-comments:
-    - match: '({{comment_start}})\s?((#+)\s*\S.*)(\n|$)'
+  comment-fenced-match:
+    - match: '{{comment_fence_start}}'
+      scope: comment.block.mox punctuation.definition.comment.begin.mox
+      push: [comment-block-meta, comment-fenced-pop]
+
+  comment-fenced-pop:
+    - match: '{{comment_fence_end}}'
+      scope: comment.block.mox punctuation.definition.comment.end.mox
+      pop: 1
+    # TODO: reconsider nesting support.
+    - include: comment-markup
+
+  # TODO remove.
+  comment-line-match:
+    - match: '({{comment_line_start}})\s?{{md_heading}}'
       scope: comment.line.mox
       captures:
         1: punctuation.definition.comment.begin.mox
         2: markup.heading.mox
         3: punctuation.definition.heading.begin.mox
-    - match: '({{comment_start}}).*(\n|$)'
+    - match: '({{comment_line_start}}).*{{eol}}'
       scope: comment.line.mox
       captures:
         1: punctuation.definition.comment.begin.mox
 
-  match-numbers:
-    - include: match-numbers-bin
-    - include: match-numbers-oct
-    - include: match-numbers-hex
-    - include: match-numbers-dec
+  # TODO remove.
+  comment-block-match:
+    - match: '{{comment_block_start}}'
+      scope: comment.block.mox punctuation.definition.comment.begin.mox
+      push: [comment-block-meta, comment-block-pop]
+
+  comment-block-meta:
+    - meta_content_scope: comment.block.mox
+    - include: now-pop
+
+  comment-block-pop:
+    - match: '{{comment_block_end}}'
+      scope: comment.block.mox punctuation.definition.comment.end.mox
+      pop: 1
+    - include: comment-block-inner
+
+  comment-block-inner:
+    - include: comment-block-match
+    - include: comment-markup
+
+  comment-markup:
+    - match: '^{{md_heading}}'
+      captures:
+        1: markup.heading.mox
+        2: punctuation.definition.heading.begin.mox
+
+  number-match:
+    - include: number-bin-match
+    - include: number-oct-match
+    - include: number-hex-match
+    - include: number-dec-match
 
   # TODO simplify.
-  match-numbers-bin:
+  number-bin-match:
     - match: 0b(?!{{int_bin}})
       scope: invalid.illegal.mox
     - match: (0b){{int_bin}}(\.){{int_bin}}([{{ident_chars}}]*)
@@ -66,7 +124,7 @@ contexts:
         2: invalid.illegal.mox
 
   # TODO simplify.
-  match-numbers-oct:
+  number-oct-match:
     - match: 0o(?!{{int_oct}})
       scope: invalid.illegal.mox
     - match: (0o){{int_oct}}(\.){{int_oct}}([{{ident_chars}}]*)
@@ -82,7 +140,7 @@ contexts:
         2: invalid.illegal.mox
 
   # TODO simplify.
-  match-numbers-hex:
+  number-hex-match:
     - match: 0h(?!{{int_hex}})
       scope: invalid.illegal.mox
     - match: (0h){{int_hex}}(\.){{int_hex}}([{{ident_chars}}]*)
@@ -98,7 +156,7 @@ contexts:
         2: invalid.illegal.mox
 
   # TODO simplify.
-  match-numbers-dec:
+  number-dec-match:
     - match: '{{int_dec}}(\.){{int_dec}}([{{ident_chars}}]*)'
       scope: constant.numeric.decimal.mox
       captures:
@@ -109,109 +167,119 @@ contexts:
       captures:
         1: invalid.illegal.mox
 
-  match-strings:
-    - include: match-strings-double
-    - include: match-strings-grave
+  string-match:
+    - include: string-double-match
+    - include: string-grave-match
 
-  match-strings-double:
+  string-double-match:
     - match: '"'
       scope: punctuation.definition.string.begin.mox
-      push: pop-strings-double
+      push: string-double-pop
 
-  pop-strings-double:
+  string-double-pop:
     - meta_include_prototype: false
     - meta_scope: string.quoted.double.mox
     - match: '"'
       scope: punctuation.definition.string.end.mox
-      pop: true
+      pop: 1
     - match: '{{char_escape}}'
       scope: constant.character.escape.mox
 
-  match-strings-grave:
+  # TODO support resizable fences.
+  string-grave-match:
     - match: '`'
       scope: punctuation.definition.string.begin.mox
-      push: pop-strings-grave
+      push: string-grave-pop
 
-  pop-strings-grave:
+  string-grave-pop:
     - meta_include_prototype: false
     - meta_scope: string.quoted.other.mox
     - match: '`'
       scope: punctuation.definition.string.end.mox
-      pop: true
+      pop: 1
 
-  match-operators:
-    - include: match-operators-base
+  ident-match:
+    - include: ident-other-match
 
-  match-operators-base:
+  ident-other-match:
+    - match: '{{ident}}'
+      scope: variable.other.mox
+
+  punct-match:
+    - meta_prepend: true
+    - include: comma-match
+    - include: semi-match
+    - include: paren-match
+    - include: bracket-match
+    - include: brace-match
+
+  # Just for experimentation. Not in the spec. Should remove later.
+  comma-match:
+    - match: \,
+      scope: punctuation.separator.sequence.mox
+
+  # Just for experimentation. Not in the spec. Should remove later.
+  semi-match:
+    - match: \;
+      scope: punctuation.terminator.semi.mox
+
+  paren-match:
+    - match: \(
+      scope: punctuation.section.parens.begin.mox
+      push: paren-pop
+    - match: \)
+      scope: punctuation.section.parens.end.mox invalid.illegal.mox
+
+  paren-pop:
+    - meta_scope: meta.parens.mox
+    - match: \)
+      scope: punctuation.section.parens.end.mox
+      pop: 1
+    - include: main
+
+  bracket-match:
+    - match: \[
+      scope: punctuation.section.brackets.begin.mox
+      push: bracket-pop
+    - match: \]
+      scope: punctuation.section.brackets.end.mox invalid.illegal.mox
+
+  bracket-pop:
+    - meta_scope: meta.brackets.mox
+    - match: \]
+      scope: punctuation.section.brackets.end.mox
+      pop: 1
+    - include: main
+
+  brace-match:
+    - match: \{
+      scope: punctuation.section.braces.begin.mox
+      push: brace-pop
+    - match: \}
+      scope: punctuation.section.braces.end.mox invalid.illegal.mox
+
+  brace-pop:
+    - meta_scope: meta.braces.mox
+    - match: \}
+      scope: punctuation.section.braces.end.mox
+      pop: 1
+    - include: main
+
+  op-match:
     - match: '[{{operator_chars}}]*\.(?=\d)'
       scope: invalid.illegal.mox
     - match: '{{operator}}'
       scope: keyword.operator.mox
 
-  match-punctuation:
-    - include: match-punctuation-base
-
-  match-punctuation-base:
-    - include: match-commas
-    - include: match-parens
-    - include: match-brackets
-    - include: match-braces
-
-  # Just for experimentation. Not in the spec. Should remove later.
-  match-commas:
-    - match: \,
-      scope: punctuation.separator.sequence.mox
-
-  match-parens:
-    - match: \(
-      scope: punctuation.section.parens.begin.mox
-      push: pop-parens
-    - match: \)
-      scope: punctuation.section.parens.end.mox invalid.illegal.mox
-
-  pop-parens:
-    - meta_scope: meta.parens.mox
-    - match: \)
-      scope: punctuation.section.parens.end.mox
-      pop: true
-    - include: main
-
-  match-brackets:
-    - match: \[
-      scope: punctuation.section.brackets.begin.mox
-      push: pop-brackets
-    - match: \]
-      scope: punctuation.section.brackets.end.mox invalid.illegal.mox
-
-  pop-brackets:
-    - meta_scope: meta.brackets.mox
-    - match: \]
-      scope: punctuation.section.brackets.end.mox
-      pop: true
-    - include: main
-
-  match-braces:
-    - match: \{
-      scope: punctuation.section.braces.begin.mox
-      push: pop-braces
-    - match: \}
-      scope: punctuation.section.braces.end.mox invalid.illegal.mox
-
-  pop-braces:
-    - meta_scope: meta.braces.mox
-    - match: \}
-      scope: punctuation.section.braces.end.mox
-      pop: true
-    - include: main
-
-  match-idents:
-    - include: match-idents-other
-
-  match-idents-other:
-    - match: '{{ident}}'
-      scope: variable.other.mox
-
   # Used in subsyntaxes.
-  pop-before-nonblank:
+  nonblank-pop:
     - match: (?=\S)
-      pop: true
+      pop: 1
+
+  now-pop:
+    - match: ''
+      pop: 1
+
+  newline-pop:
+    - match: '(?=\n|{{comment_line_start}})'
+      pop: 1

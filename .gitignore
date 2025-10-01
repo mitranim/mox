@@ -2,5 +2,6 @@
 !/ast
 !/examples
 !/sublime
+!/*rc
 !/*ignore
-!/*.md
+!/readme.md

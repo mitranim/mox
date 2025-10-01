@@ -8,11 +8,11 @@ variables:
   assign_op: '='
 
 contexts:
-  match-idents:
-    - include: match-idents-assign
-    - include: match-idents-base
+  ident-match:
+    - meta_prepend: true
+    - include: ident-assign-match
 
-  match-idents-assign:
+  ident-assign-match:
     - match: '({{ident}})\s*({{assign_op}})(?!{{operator}})'
       captures:
         1: entity.name.mox

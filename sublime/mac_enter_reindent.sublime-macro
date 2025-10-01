@@ -3,5 +3,6 @@
   {"command": "insert", "args": {"characters": "\n\n"}},
   {"command": "move", "args": {"by": "lines", "forward": false}},
   {"command": "move_to", "args": {"to": "hardeol", "extend": false}},
+  // TODO this is buggy when the code is supposed to be unindented (column 0).
   {"command": "reindent", "args": {"single_line": true}},
 ]

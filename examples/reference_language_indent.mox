@@ -8,45 +8,35 @@
 |
 | ## General Structure
 |
-| The language is mostly whitespace-insensitive, but space must be used to
-| separate forms that would otherwise combine, like adjacent numbers,
-| identifiers, operators.
-|
-| Everything is either a primitive literal, an ident or operator, or a block
-| enclosed in []. Other delimiters are not used. [] is used for grouping. The
-| comma is used to terminate variadic calls.
-|
-| There are NO RESERVED KEYWORDS. All built-ins are merely predeclared and may
-| be overridden. Built-ins don't have any special syntax.
+| The language is whitespace-sensitive, relying on spaces, newlines and
+| indentation.
 
 some_callable
-  some_callable 10 "20"
+  some_callable 10 `20`
   do
-    some_callable some_callable 10 "20"
-    some_val.some_method 10 "20"
-  ,
+    some_callable [some_callable 30 `40`] 50
+    some_val.some_method 60 `70`
 
 | Method chaining is possible.
 some_val
-  .method_one arg_one
-  .method_two arg_two
-  .method_three arg_three
+.method_one arg_one
+.method_two arg_two
+.method_three arg_three
 
-List "value0" "value1" "value2",
+List `value0` `value1` `value2`
 
-Dict "key0" "value0" "key1" "value1",
+Dict `key0` `value0` `key1` `value1`
 
 Array 16 Int
 
 | The following is a function call with a single argument.
 fmt.println
-  | The following is a single expression.
+  | This block is an expression.
   do
     | Side effect.
-    fmt.println "hello world"
+    fmt.println `hello world`
     | Return value.
-    "20"
-  ,
+    `20`
 
 | ## Naming Convention
 |
@@ -69,20 +59,20 @@ Json_encoder
 Json_decoder
 
 | Boolean variables, functions, struct fields should start with `is_`:
-def is_deleted = true
-def is_deleted = fn val -> val.is_deleted
+def is_deleted true
+def is_deleted [fn [val] val.is_deleted]
 
 | ## Calling
 
-some_func arg0 arg1
-some_value.some_method arg0 arg1
+some_func arg0 arg1 ...
+some_value.some_method arg0 arg1 ...
 some_macro some_expressions
 Some_type some_val
 
 | Might have infix operators, but no precedence.
 one.two.three
 one + two + three
-one && [two || three]
+one && [two -|| three]
 
 | Note on expressions. When converting the data notation AST to the language
 | AST, the compiler should group forms into expressions. Built-in special forms
@@ -93,47 +83,45 @@ one && [two || three]
 | There's no special syntax for blocks, but there may be a predeclared word for
 | denoting a free block:
 do
-  fmt.println "one"
-  fmt.println "two"
-  fmt.println "three"
-,
+  fmt.println `one`
+  fmt.println `two`
+  fmt.println `three`
 
-| In some contexts, like a function body, a block is implied:
-fn -> do
-  fmt.println "one"
-  fmt.println "two"
-,
+| In some contexts, like a function body, a block is implied.
+| Empty parameter lists might be optional.
+fn
+  fmt.println `one`
+  fmt.println `two`
 
 | A block is an expression. The last expression implicitly becomes the block's
 | result. This block returns `three`.
 do
-  fmt.println "one"
-  fmt.println "two"
-  "three"
-,
+  fmt.println `one`
+  fmt.println `two`
+  `three`
 
 | Unused expressions should result in a compile error. All but last expression
 | must be void. If the last expression is void, the block is void.
 do
-  fmt.println "one"     | Void, ok.
-  def local_var = "two" | Void, ok; unused var, COMPILE ERROR.
-  "three"               | Non-void, unused, COMPILE ERROR.
-  "four"                | Non-void, becomes the block's result.
-,
+  fmt.println `one`   | Void, ok.
+  def local_var `two` | Void, ok; unused var, COMPILE ERROR.
+  `three`             | Non-void, unused, COMPILE ERROR.
+  `four`              | Non-void, becomes the block's result.
 
 | ## Declarations
 |
 | One form for declaring ANYTHING is `def`. It declares types, constants,
 | variables, functions, operators, macros, and possibly more. It works in root
 | scope and local scope.
-def Some_type     = Int
-def Some_type     = Typedef Int
-def SOME_CONSTANT = "some_value"
-def some_variable = "some_value"
-def some_func = fn -> do
-  def local_var = "some_value"
-  local_var
-,
+def Some_type Int
+def Some_type [Typedef Int]
+def SOME_CONSTANT `some_value`
+def some_variable `some_value`
+
+def some_func
+  fn
+    def local_var `some_value`
+    local_var
 
 | ### Declaration Meta
 |
@@ -147,26 +135,47 @@ def some_func = fn -> do
 | We might place metadata before the declaration, like in Haskell or Typed
 | Racket:
 
-def some_variable Rope_string mut = "some_value"
+:: Rope_string mut
+def some_variable `some_value`
+
+:: Poly [A] [Fn [A A] A] where [Add A]
+def add [fn [a b] a + b]
+def add [poly [A] [fn [a A b A] a + b]]
 
 | We might choose to make metadata an optional part of `def`:
-def some_variable Rope_string mut = "some_value"
-def add Poly A -> A A -> A where [Add A] = fn a b -> a + b
+def some_variable
+  meta Rope_string mut
+  `some_value`
+
+def add
+  meta Poly [A] [Fn [A A] A] where [Add A]
+  fn [a b] a + b
 
 | `def` is technically not a reserved keyword, as there are NO RESERVED
 | KEYWORDS. It may be used for struct fields, local variables, etc.
-def Some_type = Struct def def String,
-def def = nil
+def Some_type Struct
+  def def String
+
+def def nil
 
 | ## Functions
 |
 | The language should have full type inference. In the simplest form, functions
 | can be declared without types. The last expression is implicitly returned:
-fn -> nil
-fn a -> a
-def add = fn a b -> a + b
-def sum = fn coll -> fold coll 0 add
-def sum = fn coll -> fold coll 0 fn a b -> a + b
+fn [a] a
+
+def add
+  fn [a b] a + b
+
+def sum
+  fn [coll] [foldz coll add]
+
+def sum
+  fn [coll] [foldz coll [fn [a b] a + b]]
+
+def sum
+  fn [coll]
+    foldz coll add
 
 | The syntax for types and other metadata hasn't been decided yet. It must
 | support the following: parameter types, return type, type parameters
@@ -178,26 +187,31 @@ def sum = fn coll -> fold coll 0 fn a b -> a + b
 | See the previous section on declaration metadata. We may choose to declare
 | function signatures outside of functions.
 
-def some_func Poly A -> Fn [A move] = fn a -> do
-  fmt.println a
-  drop a
-,
+:: Poly [A] [Fn [A move]]
+def some_func
+  fn [arg]
+    fmt.println arg
+    drop arg
 
-def some_func = poly A -> fn a A -> do
-  fmt.println a
-  drop a
-,
+def some_func
+  poly [A]
+    fn [a A]
+      fmt.println a
+      drop a
 
-def str_add Fn String inout -> String = fn a b -> strings.append a b
+:: Fn [String inout] String
+def str_add
+  fn [a b]
+    strings.append a b
 
 | Example use:
-def str mut = "one"
-str_add str "two" | `str` should become "onetwo"
+def str [meta mut] `one`
+str_add str `two` | `str` should become `onetwo`
 
 | `fn` is not a reserved keyword, as there are NO RESERVED KEYWORDS. It may be
 | used for struct fields, local variables, etc.
-def Struct_with_func = Struct def fn Some_fn_type,
-def fn = nil
+def Struct_with_func [Struct [def fn Some_fn_type]]
+def fn nil
 
 | ## Parametric Polymorphism
 |
@@ -210,16 +224,27 @@ def fn = nil
 |
 | The specific approach hasn't been decided yet. Some possibilities are shown
 | below.
-|
+
 | Predeclared. Noop by default.
-def drop Poly A -> Fn A = fn _ -> nil
-def drop = poly A -> fn _ A -> nil
+:: Poly [A] [Fn A]
+def drop [fn [_]]
+def drop [poly [A] [fn [_ A]]]
 
 | Specialize `drop` for `Box`.
-def drop Fn Box = fn box -> mem.free box.ptr
+:: Fn Box
+def drop [fn [box] mem.free box.ptr]
+
+:: Fn Box
+def drop
+  fn [box] mem.free box.ptr
 
 | Specialize `drop` for `File`.
-def drop Fn File = fn file -> syscall.close file.descriptor
+:: Fn File
+def drop [fn [file] syscall.close file.descriptor]
+
+:: Fn File
+def drop
+  fn [file] syscall.close file.descriptor
 
 | ## Type Definitions
 |
@@ -233,58 +258,82 @@ String
 Struct
   def field0 Type0
   def field1 Type1
-,
 
-Variant Type0 Type1 Type2,
+Variant Type0 Type1 Type2
 
 | Using `def` simply allows to access a type by a different name. The two are
 | completely interchangeable.
-def Str = String
+def Str String
 
 | Using `Typedef` defines a new type based on another, existing type. The other
 | type can be named or anonymous. Named example:
-def HttpStatusCode = Typedef Uint
+def HttpStatusCode [Typedef Uint]
 
 | Defining a type based on a constructed anonymous type:
-def String = Typedef Struct
-  def ptr Usize
-  def len Int
-,
+def String
+  Typedef
+    Struct
+      def ptr Usize
+      def len Int
 
 | We might define a shortcut for `Typedef`. This would be a regular macro,
 | rather than a special built-in. See below about macros.
-def_type HttpStatusCode = Uint
+def_type HttpStatusCode Uint
 
 | Types may be parametrized by other types or constants. Instantiation of a
 | parametrized type should use the "call" notation. It should be possible to
 | denote an anonymous type which is parametrized, mirroring the concept of
 | anonymous functions.
 
-def_type Dirty = poly A -> Struct
-  def val A
-  def ok Bool
-,
+def_type Dirty
+  poly [A]
+    Struct
+      def val A
+      def ok Bool
 
-def_type Str = Dirty String
-def str = Str val "hello world" ok true
+def_type Str [Dirty String]
 
-poly A -> Variant Nil A,
-def_type Opt = poly A -> Variant Nil A,
-def_type MaybeInt = Opt Int
+def str [Str val `hello world` ok true]
+
+def str
+  Str val `hello world` ok true
+
+poly [A] [Variant Nil A]
+
+poly [A]
+  Variant Nil A
+
+def_type Opt
+  poly [A]
+    Variant Nil A
+
+def_type MaybeInt [Opt Int]
 
 Array 16 Byte
-def_type Uuid = Array 16 Byte
+
+def_type Uuid [Array 16 Byte]
+
+def_type Uuid
+  Array 16 Byte
 
 | The syntax for struct definitions hasn't been decided. Some possibilities are
 | shown below.
 Struct
+  field_one Type0
+  field_two Type1
+
+Struct
+  fields
+    field_one Type0
+    field_two Type1
+
+Struct
   def field_one Type0
   def field_two Type1
-,
+
 Struct
-  def field_one = Type0 | Default value, zero-init.
-  def field_two = Type1 | Default value, zero-init.
-,
+  def field_one [Type0] | Default value, zero-init.
+  def field_two [Type1] | Default value, zero-init.
 
 | As shown above, variant types (also known as "sum" or "union" types) combine
 | multiple other types. All types in a variant must be unique.
@@ -293,15 +342,18 @@ Struct
 | reuses existing types. Any type could occur in any number of variant types.
 |
 | Anonymous variant type:
-Variant Some_type Other_type,
+Variant Some_type Other_type
 
 | Parametrized variant type:
-poly A -> Variant A B C,
+poly [A] [Variant A B C]
+
+poly [A]
+  Variant A B C
 
 | Function types have their own notation. This notation may have to support type
 | parameters and constraints, metadata for value parameters such as mutability,
 | owneship, and more. This example is oversimplified:
-Fn ArgType0 ArgType1 -> RetType
+Fn [ArgType0 ArgType1] RetType
 
 | The special built-in type `Nil` represents void. Nil is represented in machine
 | memory as all zeros for any given size, but in most contexts is not castable
@@ -325,37 +377,35 @@ nil
 | would be consistent with metadata for `def` and function parameters. Some
 | possibilities are listed below.
 
-def_type Some_struct = Struct
-  def field_one   String     meta json "fieldOne"   db "field_one",
-  def field_two   Byte       meta json "fieldTwo"   db "field_two",
-  def field_three Bool       meta json "fieldThree" db "field_three",
-  def lock        sync.Mutex meta priv true,
-,
+def_type Some_struct
+  Struct
+    def field_one   String     [meta json `fieldOne`   db `field_one`]
+    def field_two   Byte       [meta json `fieldTwo`   db `field_two`]
+    def field_three Bool       [meta json `fieldThree` db `field_three`]
+    def lock        sync.Mutex [meta priv true]
 
-def_type Some_struct = Struct
-  | Type-level metadata. Note that `priv` belongs in `def`, not here.
-  meta json "camel" db "snake",
+def_type Some_struct
+  Struct
+    | Type-level metadata. Note that `priv` belongs in `def`, not here.
+    meta json `camel` db `snake`
 
-  def field_one   String
-  def field_two   Byte
-  def field_three Bool
-  def lock        sync.Mutex
-,
+    def field_one   String
+    def field_two   Byte
+    def field_three Bool
+    def lock        sync.Mutex
 
-def_type Some_struct = Struct
-  fields
-    field_one   String
-    field_two   Byte
-    field_three Bool
-    lock        sync.Mutex
-  ,
-  meta
-    field_one   json "fieldOne"   db "field_one",
-    field_two   json "fieldTwo"   db "field_two",
-    field_three json "fieldThree" db "field_three",
-    lock        priv true,
-  ,
-,
+def_type Some_struct
+  Struct
+    fields
+      field_one   String
+      field_two   Byte
+      field_three Bool
+      lock        sync.Mutex
+    meta
+      field_one   json `fieldOne`   db `field_one`
+      field_two   json `fieldTwo`   db `field_two`
+      field_three json `fieldThree` db `field_three`
+      lock        priv true
 
 | ## Type Usage
 |
@@ -367,33 +417,50 @@ def_type Some_struct = Struct
 | The exact syntax for denoting a variable's type hasn't been decided yet. Some
 | possibilities are listed below.
 
-def val        = Int 10
-def val Int    =     10
-def val        = String "hello world"
-def val String =        "hello world"
+def val [Int 10]
 
-def val             = Array 4 Int 10 20 30 40,
-def val Array 4 Int = _           10 20 30 40,
+def val [String `hello world`]
 
-def val = Dict String Int
-  "one"   10
-  "two"   20
-  "three" 30
-,
+def val [meta String] `hello world`
 
-def val = Some_dict
-  "one"   10
-  "two"   20
-  "three" 30
-,
+def val [[Array 4 Int] 10 20 30 40]
 
-def val = Some_struct
-  one   10
-  two   20
-  three 30
-,
+def val
+  [Array 4 Int] 10 20 30 40
 
-def val = Some_set 10 20 30,
+def val [meta [Array 4 Int]] [_ 10 20 30 40]
+
+def val [meta [Array 4 Int]]
+  10 20 30 40
+
+def val [meta [Array 4 Int]]
+  10
+  20
+  30
+  40
+
+def val
+  [Dict String Int]
+    `one`   10
+    `two`   20
+    `three` 30
+
+def val
+  Some_dict
+    `one`   10
+    `two`   20
+    `three` 30
+
+def val
+  Some_struct
+    one   10
+    two   20
+    three 30
+
+def val [Some_set 10 20 30]
+
+def val
+  Some_set 10 20 30
 
 | ## Literal Overloading
 |
@@ -409,13 +476,13 @@ def val = Some_set 10 20 30,
 | with a given primitive literal, and define a compile-time computation that
 | performs the conversion inside the compiler. User-defined code executed at
 | compile time is also known as "macros", see below.
-def int         = Int 10
-def uint        = Uint 10
-def big         = Big_int 10
-def char        = Char "a"                  | Computed at compile time.
-def char        = Char "ab"                 | Compile error.
-def rope        = Rope_string "hello world" | Computed at compile time.
-def ident_regex = Regex `^\b\w+\b$`         | Computed at compile time.
+def int         [Int 10]
+def uint        [Uint 10]
+def big         [Big_int 10]
+def char        [Char `a`]                  | Computed at compile time.
+def char        [Char `ab`]                 | Compile error.
+def rope        [Rope_string `hello world`] | Computed at compile time.
+def ident_regex [Regex `^\b\w+\b$`]         | Computed at compile time.
 
 | Second: overloading the "call" syntax for a specific type. Many types will be
 | internally implemented as structs, or pointers to structs, but the
@@ -429,16 +496,16 @@ def ident_regex = Regex `^\b\w+\b$`         | Computed at compile time.
 |
 | Type implementation and call overloading are both elided. This is likely to be
 | a reference type rather than just a struct.
-def_type Dict = poly A B -> Struct ...,
+def_type Dict [poly [A B] [Struct ...]]
 
-def My_dict_type = Dict String Int
+def My_dict_type [Dict String Int]
 
 | Uses the overloaded literal syntax.
-def dict = My_dict_type
-  "one"   10
-  "two"   20
-  "three" 30
-,
+def dict
+  My_dict_type
+    `one`   10
+    `two`   20
+    `three` 30
 
 | ## Macros
 |
@@ -452,52 +519,63 @@ def dict = My_dict_type
 |
 | Technically, macros might not be limited to just AST operations. There might
 | be other interesting uses, for example involving IO.
+
+| ### SQL
 |
 | Example SQL generation with a macro. This hypothetical `sql_query` macro
-| supports argument substitution (default) and text interpolation
-| (opt-in). Arguments are replaced with positional placeholders and added to
-| the argument slice. The returned object contains text and arguments.
+| supports argument substitution (default) and text interpolation (opt-in).
+| Arguments are replaced with positional placeholders and added to the argument
+| slice. The returned object contains text and arguments.
 
-def table_name = "persons"
+def table_name `persons`
 
-def id = random_uuid
+def id [random_uuid]
 
-def query = sql_query `
-  select col0, col1, col2
-  from ` text table_name `
-  where
-  id = ` id ` and
-  not is_deleted
-`,
+def id
+  random_uuid
+
+def query
+  sql_query `
+    select col0, col1, col2
+    from ` [text table_name] `
+    where
+    id = ` id ` and
+    not is_deleted
+  `
 
 | `sql_query` returns a value of this type:
-def_type Sql_query = Struct
-  def text String
-  def args List Any
-,
+def_type Sql_query
+  Struct
+    def text String
+    def args [List Any]
 
-| Example XML generation with a hypothetical `xml` macro. Uses @ for
-| interpolation. The macro could be defined to return an AST or print a
-| string.
-xml
-  html
-    document
-      div
-        | Attributes
-        : attr0 "value0" attr1 "value1",
+| ### XML
+|
+| Example XML/HTML/DOM generation. The hypothetical namespace "x" defines
+| functions that return element objects which can be serialized or used in
+| other ways.
+x.document
+  x.html
+    x.head
+      x.title `page title`
+    x.body
+      x.div
 
-        | Nested element with a text node
-        span "text",
+      | Attributes.
+      .att
+        attr0 `value0`
+        attr1 `value1`
 
-        | Text node
-        "text"
+      | Children.
+      .chi
+        | Nested element with a text node.
+        x.span `text`
 
-        | Interpolation: variable
-        @var0
+        | Text node.
+        `text`
 
-        | Interpolation: arbitrary expression (function or macro)
-        @[str var0 var1 var2]
-      ,
-    ,
-  ,
-,
+        | Interpolation: arbitrary variable.
+        var0
+
+        | Interpolation: arbitrary expression (function or macro).
+        fun0 arg0 arg1 arg2

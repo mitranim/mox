@@ -1,0 +1,87 @@
+| Extends `./sketch_syn_indent_base.mox`.
+| 
+| # Overview
+| 
+| Extensions to the base syntax:
+|
+| * Use the "one two three" syntax (subsequent tokens not separated by newline)
+|   for arguments, allowing to place arguments on the same line as the call,
+|   optionally followed by canonically-shaped arguments after newline +
+|   indent.
+| * Use outer delimiters `[]` for nested calls, which must be single-line.
+|   Multi-line inside `[]` is a parse error.
+| * Provide built-in syntax `one.two.three` for namespace access / method call.
+| * Functions have access to context/receiver, available under the contextual
+|   identifier `self`, similar to many OO languages.
+| * Support for method chaining: `.blah` at the start of a line calls method
+|   `blah` on the result of the previous expression at the same indentation
+|   level.
+
+| # Examples
+
+| ## Arguments
+
+| Canonical form:
+fun_0
+  arg_0
+  fun_1
+    arg_2
+  arg_3
+fun_4
+
+| Flat form:
+fun_0 arg_0 [fun_1 arg_2] arg_3
+fun_4
+
+| Partially flat form:
+fun_0 arg_0
+  fun_1 arg_2
+  arg_3
+fun_4
+
+| ## Methods
+
+| * At compile time, finds the function `meth_1` associated with `ns_0`.
+| * At runtime, calls `meth_1`, passing `ns_0` as receiver.
+| * Calls the final output, recursively.
+| * All calls are nullary.
+ns_0.meth_1
+
+| * At compile time, finds the function `middle` associated with `outer`.
+| * At runtime, calls `middle`, passing `outer` as receiver.
+| * At compile time, finds the function `inner` associated with `middle`.
+| * At runtime, calls `inner`, passing `middle` as receiver.
+| * Calls the final output, recursively.
+| * All calls are nullary.
+outer.middle.inner
+
+| * At compile time, finds the function `meth_1` associated with `ns_0`, and
+|   verifies arity and argument types.
+| * At runtime, calls `meth_1`, passing `ns_0` as receiver and the two
+|   arguments.
+| * Calls the final output without arguments, recursively.
+ns_0.meth_1 arg_2 arg_3
+
+| Parse error: method names must be identifiers.
+ns_0.10
+
+| Parse error: method names must be identifiers.
+ns_0.`some_string`
+
+| ## Chaining
+
+| Method chaining across multiple lines.
+Type_0
+.meth_1
+  arg_2
+.meth_3
+.meth_4 arg_5 arg_6
+
+| Method chaining on single line. This naturally follows from the idea of using
+| outer delimiters for nested calls, and seems to disqualify that idea.
+[[[Type_0].meth_1 arg_2].meth_3].meth_4 arg_5 arg_6
+
+| We may provide punctuation equivalent to "newline same indent", which allows
+| the following. This punctuation must have higher precedence than namespacing
+| (`.`) and argument separation (space).
+Type_0, .meth_1 arg_2, .meth_3, .meth_4 arg_5 arg_6

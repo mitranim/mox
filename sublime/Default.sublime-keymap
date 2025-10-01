@@ -52,9 +52,9 @@
     "args": {"file": "res://Packages/mox/mac_enter_reindent.sublime-macro"},
     "context": [
       {"key": "selector", "operator": "equal", "operand": "source.mox"},
+      {"key": "setting.auto_indent", "operator": "equal", "operand": true},
       {"key": "setting.auto_complete_commit_on_tab", "operator": "equal", "operand": true},
       {"key": "auto_complete_visible", "operator": "equal", "operand": true},
-      {"key": "setting.auto_indent", "operator": "equal", "operand": true},
       {"key": "selection_empty", "operator": "equal", "operand": true, "match_all": true},
       {"key": "following_text", "operator": "regex_contains", "operand": "^\\]", "match_all": true},
     ]
@@ -65,13 +65,14 @@
     "args": {"file": "res://Packages/Default/Add Line in Braces.sublime-macro"},
     "context": [
       {"key": "selector", "operator": "equal", "operand": "source.mox"},
-      {"key": "auto_complete_visible", "operator": "equal", "operand": false},
       {"key": "setting.auto_indent", "operator": "equal", "operand": true},
+      {"key": "auto_complete_visible", "operator": "equal", "operand": false},
       {"key": "selection_empty", "operator": "equal", "operand": true, "match_all": true},
       // {"key": "preceding_text", "operator": "not_regex_contains", "operand": "\\]$", "match_all": true},
       {"key": "following_text", "operator": "regex_contains", "operand": "^\\]", "match_all": true},
     ]
   },
+
   // {
   //   "keys": ["enter"],
   //   "command": "run_macro_file",
@@ -84,4 +85,58 @@
   //     {"key": "following_text", "operator": "regex_contains", "operand": "^\\]", "match_all": true},
   //   ]
   // },
+
+  // Must match the comment fence character.
+  {
+    "keys": ["|"],
+    "command": "misc_wrap",
+    "args": {"prefix": "|", "suffix": "|"},
+    "context": [
+      {"key": "selector", "operator": "equal", "operand": "source.mox"},
+      {"key": "setting.auto_match_enabled", "operator": "equal", "operand": true},
+      {"key": "selection_empty", "operator": "equal", "operand": false, "match_all": true},
+    ],
+  },
+
+  // Must match the comment fence character.
+  {
+    "keys": ["enter"],
+    "command": "run_macro_file",
+    "args": {"file": "res://Packages/Default/Add Line in Braces.sublime-macro"},
+    "context": [
+      {"key": "selector", "operator": "equal", "operand": "source.mox"},
+      {"key": "setting.auto_indent", "operator": "equal", "operand": true},
+      {"key": "selection_empty", "operator": "equal", "operand": true, "match_all": true},
+      {"key": "preceding_text", "operator": "regex_contains", "operand": "[|;]$", "match_all": true},
+      {"key": "following_text", "operator": "regex_contains", "operand": "^[|;]", "match_all": true},
+    ],
+  },
+
+  // Must match the comment fence character.
+  {
+    "keys": ["enter"],
+    "command": "run_macro_file",
+    "args": {"file": "res://Packages/mox/mac_dup_line_wrap.sublime-macro"},
+    "context": [
+      {"key": "selector", "operator": "equal", "operand": "source.mox comment"},
+      {"key": "setting.auto_indent", "operator": "equal", "operand": true},
+      {"key": "selection_empty", "operator": "equal", "operand": true, "match_all": true},
+      {"key": "preceding_text", "operator": "regex_contains", "operand": "[|;]+$", "match_all": true},
+      {"key": "following_text", "operator": "regex_match", "operand": "^$", "match_all": true},
+    ],
+  },
+
+  // Must match the comment fence character.
+  {
+    "keys": ["enter"],
+    "command": "run_macro_file",
+    "args": {"file": "res://Packages/mox/mac_comment_single_to_multi.sublime-macro"},
+    "context": [
+      {"key": "selector", "operator": "equal", "operand": "source.mox comment"},
+      {"key": "setting.auto_indent", "operator": "equal", "operand": true},
+      {"key": "selection_empty", "operator": "equal", "operand": true, "match_all": true},
+      {"key": "preceding_text", "operator": "regex_match", "operand": "^\\s*([|;]+)[^|;]+$", "match_all": true},
+      {"key": "following_text", "operator": "regex_match", "operand": "^$", "match_all": true},
+    ],
+  },
 ]

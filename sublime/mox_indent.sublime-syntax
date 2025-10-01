@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base_lang.sublime-syntax
+scope: source.mox
+first_line_match: 'variant=mox_indent'
+
+contexts:
+  # Hacked-together, incomplete.
+  ident-match:
+    - meta_prepend: true
+    - match: '^\s*(\.*)({{ident}})(?!\.)'
+      captures:
+        1: punctuation.accessor.mox
+        2: variable.function.mox

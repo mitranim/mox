@@ -2,8 +2,8 @@
 ;
 ; The first level of the syntax defines a "data notation": literal syntax for
 ; various primitive types and nestable blocks. This level is not aware of any
-; language specifics. It has NO reserved keywords, operators, or special
-; constants such as `true` or `false`.
+; language specifics. It has NO reserved keywords or special constants such as
+; `true` or `false`.
 ;
 ; Editors should implement a simplified syntax highlighter for the data
 ; notation, independent of any language or configuration defined in terms of
@@ -64,7 +64,7 @@
 ;
 ; The notation supports several radices. Every radix allows integers and
 ; fractionals.
-; 
+;
 ; The popular Ne+N exponent notation is not supported until its syntax is
 ; finalized.
 ;
@@ -89,28 +89,28 @@
 
 ; ### Parsing Restrictions
 ;
+; The contents of comments and strings are exempt from all restrictions below.
+;
 ; To avoid ambiguities and reserve space for future extensions, the parser must
 ; reject identifier characters immediately following a number, if they're not
 ; valid digits for its radix. This automatically rejects unknown radix
 ; specifiers, as they appear to be malformed decimals. This restriction must
 ; also be applied immediately after a known radix specifier.
 ;
-;   0b012         ; Invalid.
-;   0123456789_   ; Invalid.
-;   0123456789a   ; Invalid.
-;   0123456789e10 ; Invalid.
-;   0b            ; Invalid.
-;   0b2           ; Invalid.
-;   0o            ; Invalid.
-;   0o8           ; Invalid.
-;   0h            ; Invalid.
-;   0hg           ; Invalid.
-;   0x            ; Invalid.
-;   0x0           ; Invalid.
+;   0b012         ; Invalid: `2` is not a binary digit.
+;   0123456789_   ; Invalid: `_` is not a decimal digit.
+;   0123456789a   ; Invalid: `a` is not a decimal digit.
+;   0123456789e10 ; Invalid: `e` is not a decimal digit.
+;   0b            ; Invalid: missing digit after radix.
+;   0b2           ; Invalid: `2` is not a binary digit.
+;   0o            ; Invalid: missing digit after radix.
+;   0o8           ; Invalid: `8` is not an octal digit.
+;   0h            ; Invalid: missing digit after radix.
+;   0hg           ; Invalid: `g` is not a hex digit.
+;   0x            ; Invalid: missing digit after radix.
 ;
 ; To avoid ambiguities, the parser must reject a dot immediately followed by a
-; decimal digit, regardless of other preceding tokens. Comments and strings are
-; exempt.
+; decimal digit, regardless of other preceding tokens.
 ;
 ;   .0123456789   ; Invalid.
 ;   ..0123456789  ; Invalid.
@@ -135,8 +135,8 @@
 ;
 ; ### Characters
 ;
-; Character literals are currently not supported. They're avoidable and present
-; interoperation problems.
+; Character literals are currently not supported. They're unnecessary
+; and can interfere with interoperation; see below.
 ;
 ; One common approach is to define a function that takes a string and returns a
 ; Unicode code point. Python example:
@@ -189,6 +189,17 @@ grave string:
 supports newlines, but not escapes: \t \n
 `
 
+; String delimiters can be repeated, and the boundaries must match:
+'one'
+''two''
+'''three'''
+"one"
+""two""
+""three""
+`one`
+``two``
+```three```
+
 ; ## Identifiers
 ;
 ; Identifiers have C-like restrictions: only US ASCII Latin alphanumerics,
@@ -204,13 +215,16 @@ arbitrary_ident true false nil self
 ~ ! @ # $ % ^ & * : < > . ? / \ | = + -
 ~! @# $% ^& *: <> .? /\ |= +-
 
-; Operators must be separated from each other by whitespace, delimiters, or
-; other forms. Operators and other forms can be adjacent, but intermediary
-; whitespace can be preferred for readability.
-- + == ...
-10 + 20 + 30
-10+20+20
-one.two.three
+; `-` at the beginning of a numeric literal is considered part of that literal,
+; and not an operator.
+
+; Operators must be separated from each other and from identifiers by either
+; whitespace, delimiters, or other forms.
+- -- --- + ++ +++ = == === ; 9 distinct operators.
+one+two                    ; Invalid, doesn't parse.
+one + two                  ; Valid.
+10+20+20                   ; Valid but discouraged.
+10 + 20 + 30               ; Preferred for readability.
 
 ; This notation doesn't support commas and discourages unnecessary punctuation.
 ; Statements, expressions, elements in data structures, and arguments in
