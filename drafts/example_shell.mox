@@ -1,0 +1,92 @@
+;;
+A well-designed language should be usable as a shell REPL, without having to
+invent another language, and without an arcane DSL. It should be usable just
+by itself.
+
+That said, a shell needs to provide a huge plethora of common OS operations.
+The most important one is invoking an arbitrary process with arbitrary args.
+But also inspecting the FS, the env, the available commands, composing data
+pipelines, and more, and more. They would be implemented in a special stdlib
+module and re-exported by a shell initialization script into the shell REPL.
+
+The shell REPL is just our language's regular REPL, with shell-related stuff
+dumped into current scope.
+
+We configure a terminal to run something like `mox repl --file=~/.profile.mox`
+when opening a tab.
+
+Let's also suppose that the language REPL defines a special interface for
+expression evaluation, which can be implemented for any type. In a REPL,
+whenever the user inputs some code, the REPL faithfully JIT-compiles and
+executes the code, then runs `repl_eval. result`, where the default
+implementation for all types is to print a code-like representation of
+the result (a "repr"). Nil is not printed.
+
+For some types, `std:shell` implements `repl_eval`
+with a different behavior; see below.
+
+Since our calls are either unary or binary, commands will be usually invoked as
+`some_command.some_arg`, where `some_arg` is often a string / list / dict.
+;;
+
+include.`std:shell`
+
+;;
+## Built-ins
+
+`std:shell` provides a variety of common shell commands, with the same names as
+in Unix shells. The exact type of each command is immaterial and transparent to
+the user. The important part is that commands are callable, with or without
+arguments. See below.
+;;
+
+ls                                      ;; Works due to `repl_eval`. ;;
+ls.nil                                  ;; Horrible but valid alternative. ;;
+. ls                                    ;; Less bad alternative. ;;
+ls.{all true dot true}                  ;; So verbose. ;;
+ls.some_path                            ;; Might be valid. ;;
+ls.`some_dir/some_file`                 ;; Quotes are often needed anyway. ;;
+ls.{path `some_dir/some_file` all true} ;; So verbose. ;;
+ls.(-alhFG `some_dir/some_file`)        ;; Parser might complain. ;;
+ls.`-alhFG some_dir/some_file`          ;; What if you have to quote the path? ;;
+ls.`-alhFG "some_dir/some_file"`        ;; Sub-quotes. ;;
+
+man.some_command
+which.some_command
+
+;;
+## Executables
+
+`std:shell` overloads `S -> C` in REPL scope to support resolution and
+execution of arbitrary executables found in `$PATH`. For example, since
+we have no `make` in scope, typing `make` invokes `S -> A`, which finds
+the executable (if exists) and returns an opaque value which can be
+REPL-evaluated to run the executable without arguments, or be called
+with CLI-style inputs to provide the arguments.
+;;
+
+;; Run with no arguments. ;;
+make
+
+;; Run with arguments. ;;
+make.recipe
+make.`recipe0 recipe1 recipe2`
+make.[recipe0 recipe1 recipe2]
+make.`--help`
+make.`--quiet recipe0 recipe1 recipe2`
+make.`recipe arg0=val0 arg1=val1`
+
+;;
+## Composition
+
+The pipe operator is a compile-time proc which treats its LHS and RHS
+as top-level REPL commands and pipes from LHS to RHS. It also supports
+`repl_eval` for its operands.
+;;
+ls | grep.some_word
+
+;;
+Redirect. `>>` is a compile-time proc which treats the LHS as a top-level
+REPL command, and the RHS as a file to write to.
+;;
+cat.`./readme.md` >> `out.txt`

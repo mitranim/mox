@@ -1,0 +1,2898 @@
+;;
+## Overview
+
+Preliminary sketches and notes for a hypothetical programming language which
+doesn't exist yet, but needs to. Basically a long wishlist from the language
+user perspective.
+
+This doc covers syntax and expressions first because that was fun to write
+and because I think syntax is fundamentally broken in most languages
+(over-specialized) and needs fixing (un-specializing).
+
+But this is REALLY about fixing the execution model.
+
+The core idea is to have a language which doesn't force a split between AoT
+compilation vs JIT execution, but does both and lets you freely mix and match,
+and MOVE the line between where and when you want particular code to run. In
+development you should be able to mostly use the JIT mode for faster iteration,
+in production you will AoT compile, and you should be able to simply import the
+compiler to load plugins and mods at app runtime, and JIT + link them against
+your program to run at native speed. Baffling that no major language does this
+natively. (Dylib hacks are neither native nor ergonomic.) This JIT focus should
+also make it self-bootstrappable.
+
+It's kinda like saying that the compiler core should be small and fixed, and
+modules should be able to plug into the compiler on the fly, modify behaviors
+like codegen, install new behaviors, instruct the compiler how to compile them,
+and so on.
+
+The JIT+AoT combo means you should be able to prototype very rapidly, then build
+up without having to rewrite in another language. To make this practical, we'll
+need powerful type inference.
+
+## Influences
+
+This document has many influences.
+
+Years of suffering from poor designs and thinking about better designs.
+
+Many, many programming languages. Non-exhaustive list, ordered aesthetically:
+- Go
+- Nim
+- Zig
+- Jai
+- Odin
+- Rust
+- Swift
+- Erlang
+- Haskell
+- Smalltalk
+- Red / Rebol
+- Clojure and other Lisps
+- https://paulgraham.com/hundred.html
+
+Honorary shoutout to anti-inspirational systems such as C++ and Java.
+Discovering what to _avoid_ is quite valuable.
+
+In languages, we shouldn't settle for "the right tool for the job".
+In many jobs, there are many tools and some of them are better than
+others. But when your job has you reaching for a language, it should
+be possible to define ONE language which is right for every job.
+Further specialization should be done with libraries.
+
+We need one "final" language, which should:
+- Be right for every job.
+- Be usable for systems programming, mainframes, games,
+  web apps, scripting, shells, and more.
+- Be high level and low level both.
+- Be good for fast iteration (low latency).
+- Have AOT compilation to machine code.
+- Have JIT compilation and hot module swapping.
+- Interchange JIT and AOT flexibly.
+- Hot-load+JIT plugins and mods in production.
+- Compile for GPUs.
+- Compile for browsers (to plain clean JS).
+- Deduplicate related concepts. (See [#scopes_are_structs].)
+- Have an extemely simple and easy-to-type syntax.
+
+## Syntax and AST
+
+The language is defined in terms of its data notation, similar to Clojure's EDN.
+It's described in more detail in `./data_notation.mox`. In short, it supports:
+- Comments
+- Numbers
+- Strings
+- Symbols
+- Lists: () [] {} (distinct types)
+
+Notable differences from Clojure's AST types:
+- No support for `:keyword` symbols.
+- No support for reader macros. (Probably won't need them.)
+- While {} is always eventually treated as a dict, it's initially
+  parsed as a list, because we use duplicate keys for overloads.
+
+Delimiter purposes:
+- () is for app-compile-time sequences: blocks, groups, maybe tuples.
+- [] is for app-execution-time sequences.
+- {} is for dicts and structs.
+
+The AST is homoiconic: numbers are really numbers in the AST, strings are
+really strings, and so on. The parser is encouraged to preserve references
+to source code for all AST nodes, but if that's inconvenient or slow, it's
+allowed to make tradeoffs, such as only preserving them for composite types.
+
+Describing a language in a simple, fixed data notation with a homoiconic AST,
+and avoiding keywords, is an extremely powerful idea which greatly simplifies
+the syntax, parsing, and AST manipulation, allows for very flexible DSLs, and
+makes learning easier for many. This has been well-explored in Lisps, but our
+system is different from theirs.
+
+In one sense, the syntax of the language is frozen forever. When new features
+are released, users don't have to learn new arcane syntaxes. In another sense,
+the syntax is infinitely flexible, because our data notation can represent a
+huge range of "shapes". Code can be given any shape suitable for the task.
+
+By default, the parser discards comments. Preserving comments is an optional
+switch used by formatters and documentation generators.
+
+The parser's idea of "symbols" is Lisp-style: arbitrary ASCII printables not
+reserved for other purposes. The compiler splits symbols at dots, before each
+dot, except at the boundaries. This means, for example, that `.one.two.three.`
+becomes `.one .two .three.`. The purpose of this split is apparent in
+[#call_syntax].
+
+Atomic tokens are separated by whitespace or delimiters. Aside from that,
+our notation is entirely whitespace-insensitive.
+
+There are no statements, only expressions.
+
+There are no keywords, no reserved names, and no special characters
+beyond the data notation.
+
+Configuration files would be written in a specialized version of the data
+notation, with support for `{}` dicts, `nil`, `false`, `true`, once again
+similar to the EDN. See `./example_config.mox`.
+
+While the syntactic flexibility is extreme, its lower bound is the data
+notation: the underlying structures are always recognizable. Higher level
+constructs are _defined in terms of data structures_, not in terms of
+textual tokens such as "keyword X followed by character Y".
+
+Unlike Lisps, this language aims to have distinct visual code shapes for
+distinct concepts. Glancing at a code should vaguely tell you the shape
+of the control flow. Declarations should be readily distinguishable from
+usage. Sufficiently different types and data structures should be visually
+distinct; the list vs dict / struct distinction is one of many such cases.
+
+However, _like_ Lisps, we aim to define these syntactic constructs entirely
+in library code. They are not part of the data notation, and the compiler
+core should have no knowledge of them.
+;;
+
+;; Symbols ;;
+nil
+false
+true
+some_identifier
+!@#$%^&* ;; Custom operator ;;
+
+;; List literal (contextual) ;;
+[10 20 30]
+
+;; Struct literal (contextual) ;;
+{
+  one 10
+  two 20
+}
+
+;; Dict literal (contextual) ;;
+{
+  `one` 10
+  `two` 20
+}
+
+;;
+## Language features and compile-time execution
+
+Every compiler is an interpreter. Any C file is a dynamically typed script
+sequentially executed by the compiler at compile time. The consideration of
+eventual runtime semantics and generation of runnable machine code is a side
+effect of that execution.
+
+C is just an example. Any single-pass compiler running over source code is
+interpreting that code on the fly as a script. Multi-pass compilers are more
+complex, but the core principle of our argument holds for them as well.
+
+Every piece of code has 2 distinct sets of semantics:
+- Interpretation semantics, which modify compiler state.
+- Execution semantics, which modify the resulting program's state.
+
+When a compiler sees a variable declaration, it interpets that as a command to
+perform whatever static checks it supports, then to modify the current scope,
+allocate stack space if needed, and so on. The same idea applies to function
+declarations, type declarations, and basically every language feature.
+
+We shouldn't keep this power locked inside compilers. And compilers shouldn't
+be black boxes full of special cases. Instead, we should take the notion that
+compilers are interpreters to its logical conclusion, embrace compile-time
+execution of arbitrary code, and define the entire language by _scripting the
+compiler_ in the standard library code.
+
+Special features supported by the compiler may include the following.
+This is just a rough sketch:
+- Scopes.
+- Some way of declaring names (putting them in scope).
+- Some way of defining types.
+- Some way of defining functions, or at least runnable code.
+- Compile-time execution of arbitrary code.
+  - Initially interpreted, but eventually we want a tiered JIT.
+
+The compiler also gives us access to its runtime state, which includes the
+AST. The types are defined in standard library code and match the runtime
+structures "by accident" (but also by design).
+
+The core type-definition primitive provided by the compiler could be just
+"a chunk of memory with N bytes". This might be sufficient for the stdlib,
+which uses it to define primitive types such as integers, then progressively
+more complex types. If the notion of complex structures such as "structs"
+and "slices" can be kept outside the compiler's core, it should be.
+
+The standard library bootstraps itself from core primitives, but does not
+force this on user code. It provides higher-level features such as a rich
+set of built-in types and functions operating on them. But the standard
+library is entirely optional. A program targeting a tiny embedded chip
+may choose to bootstrap itself using different primitives.
+
+In summary:
+- The only special syntax is how to invoke procedures.
+- The compiler provides only what's needed for bootstrapping.
+- The ability to script the compiler unlocks everything else.
+;;
+
+;;
+### Compile-time procs
+
+TLDR: aim to support arbitrary compile-time computations; "comtime" for short.
+
+Compile-time / comtime procs have many use cases:
+- Manipulating AST / scope / compiler state / etc.
+- Pre-calculating constant values.
+- Enabling conditional compilation.
+- Performing additional validation.
+
+The first group is usually called "macros",
+and tends to be used for syntactic features.
+
+The second group is useful for precalculating constant values
+at compile time to avoid the cost at program execution time.
+
+For any proc declaration, it should be possible to mark it for automatic
+comtime execution. Calling that proc causes the compiler to invoke it
+during compilation. The inputs have to be "constant", as in, available at
+compile time.
+
+In comtime procs which manipulate the program itself ("macros"), it should
+be possible to access any part of the compiler state, as well as the local
+context: operands as AST nodes, local scope, and so on.
+
+It should also be possible to decide at a callsite when to run a given
+expression. The language should provide a proc that takes an expression
+and runs it at compile time, storing the constant result in the executable.
+This is similar to `static` in Nim.
+
+Compile-time computations have a cost. When iterating on a program, users
+shouldn't have to sit through repeated recalculations of values which might
+not even be used. It should be possible to make this conditional. Some proc
+declarations or callsites could specify that the given computation is
+compile-time in release builds, but execution-time in dev / debug builds.
+Semantics should be preserved: such execution-time computations should be
+memoized and not repeated. It seems likely that memoized execution-time
+computations should be the preferred default for dev / debug builds, since
+this reduces waiting time while keeping the total computation time similar.
+
+One example of the usefulness of arbitrary compile-time computations is
+converting a constant string into a regex state machine. In Go, this can
+be done only at program execution time, and naive code might run this
+repeatedly and redundantly, instead of storing the result. In a language
+with arbitrary compile-time computations, this can be easily avoided.
+
+More generally, string literals are used to embed many different data formats
+into programs: literal URLs, literal SQL, literal JSON, and so on. In langs
+without compile-time calculations, all the parsing is done at runtime, and
+libraries have to be carefully written to cache the results to avoid repeated
+parsing. We shouldn't have to cope with that.
+
+Another use case is conversion between structure formats. For example, since
+Haskell doesn't have dict / map literals, Haskell maps are constructed via
+`fromList [(key, val), (key, val)]` at a runtime cost. The cost could in
+principle be eliminated by special-casing this in the compiler, but any
+self-respecting language should make it possible for external libraries
+to do that on their own.
+;;
+
+;;
+## Procs and calls
+
+Many languages have "operators", "functions", and "methods" as distinct
+concepts. We unify them into one. This document calls them "procs" for
+brevity. The name is not important.
+
+The description below is conceptual, not syntactic.
+Tentative syntax for proc definitions and calls is shown later.
+
+There are only 2 proc arities: unary `X -> Z` and binary `X Y -> Z`.
+
+Homogeneous variadic calls use inline lists:
+
+  some_proc.[10 20 30]
+
+Heterogeneous calls use inline structs:
+
+  some_proc.{one 10 two 20}
+
+In proc declarations, the name is optional. There are 6 proc patterns and
+4 declaration patterns, listed below. They're used throughout the rest of
+this document. X Y Z stand for arbitrary types, and S stands for a static,
+hardcoded symbol.
+
+  X     -> Z
+  S     -> Z
+  X S   -> Z
+  X Y   -> Z
+  S X   -> Z
+  X S Y -> Z
+
+The pattern `X -> Z` is the type of an unary proc. To actually call such a
+proc, it needs to be associated with a name. See `S X -> Z` below. Also see
+[#first_class_procs] for more details.
+
+The pattern `S -> Z`, where S is a static symbol, accesses the value bound to
+the name S in the current scope. See [#variables] for additional details.
+
+The pattern `X S -> Z`, where S is a static symbol, is intended for struct
+field getters. Conceptually, reading a struct field is equivalent to calling
+a proc which returns data at the field's offset, and setting a field is
+equivalent to calling a proc which writes at that offset. This is done with
+1-3 assembly instructions depending on the architecture and use case, but
+conceptually, this is still a proc. See [#struct_fields] for details.
+
+The unification of fields and procs allows switching between built-in plain
+getters and custom getters with no refactoring. Many languages frown upon
+this feature due to hidden costs, but in our design this is hard to avoid.
+
+The pattern `X Y -> Z` is the type of a binary proc. When bound to `X S Y`
+in the current scope, it can be called as `X S Y -> Z`. When anonymously
+declared in the current scope, it makes X callable with Y. Any type can be
+made callable this way. However, because such calls tend to be illegible,
+this should be mostly avoided.
+
+The pattern `S X -> Z`, where S is a static symbol, invokes a proc `X -> Z`
+bound to `S X` in the current scope. This is used for unary procs declared in
+module root and inside structs. See [#first_class_procs]. We may also end up
+using it for reassigning variables. See [#variables] and [#struct_field].
+
+The pattern `X S Y -> Z`, where S is a static symbol, invokes a binary proc
+bound to `X S Y` in the current scope. This document uses the infix notation
+for such calls. We may end up using this for modifying struct fields, but see
+[#struct_fields] for some notes.
+;;
+
+;;
+### Variables
+
+Conceptually, `S -> Z` exists, where S is a static symbol. This is just
+regular variable access. Similarly, `S X -> Z` sets a variable's value,
+returning the previous value; X and Z are the same type.
+
+Later in this document we discuss how scopes are really just structs.
+Taking both ideas together, we can eliminate the concept of "variables"
+and replace them with struct fields and procs.
+
+We could even support overloading `S -> Z` and `S X -> Z`. User code could
+insert custom logic into variable access for a given scope. Could be useful
+for embedded DSLs.
+
+Given that taking a reference to a variable is a very common need, the Z in
+`S -> Z` is most likely `Ref A` where A is the variable's type. Any `Ref A`
+should automatically dereference to A where needed.
+
+For comparison, Haskell unifies variables and nullary functions.
+This can only be done in a lazy language.
+;;
+
+;; Reading a variable calls `S -> Z` ;;
+some_variable
+
+;;
+Calling `S X -> Z` or `X S -> Z` for an S which is defined in the current
+scope reassigns that variable. This is tentative and subject to revision.
+We may define an assignment operator instead. Also see [#constants].
+;;
+some_variable.`some_new_value`
+`some_new_value`.some_variable
+
+;;
+### Struct fields
+
+Procedural languages tend to treat structs specially, with special syntax for
+field manipulation, distinct from the regular "call" syntax.
+
+This document aims to reduce the amount of concepts and syntax which need to
+be supported intrinsically by a compiler of a feature-rich language. Features
+should be in library code. With that in mind, can we push structs out of the
+compiler and syntax, into the standard library?
+
+Structs are basically tuples. Field names are abstractions for humans.
+At runtime, they're hardcoded memory offsets.
+
+Struct field "get" can be defined as a proc `X S -> Z` which reads the data
+at the right offset.
+
+Struct field "set" can be defined as a proc `X S Y -> Z` which sets the data
+at the right offset. What is Z remains TBD: either previous value or nil.
+
+However, this is not enough, because struct fields are _addressable_.
+Consider the following common operation:
+
+  outer.middle.inner.some_field = some_value
+
+In languages with first-class references, such as C, Go, Rust, Swift, Nim and
+probably thousands more, taking a reference to a nested struct field is
+fairly common.
+
+Being able to take a reference to a nested field may be negotiable, but the
+ability to easily modify an inner field is probably non-negotiable. Worse,
+if `X S -> Z` naively returns an inner struct _by value_, copying the inner
+struct, a modification will silently succeed without doing anything:
+
+  outer.middle.inner.some_field.`some_value`
+        ^^^^^^ a copy
+               ^^^^^ a copy
+                     ^^^^^^^^^^ setter proc
+                                ^^^^^^^^^^^^ value is discarded
+
+The solution involves [#refs]. The key is implicit dereferencing. Any `Ref X`
+is implicitly convertible to X. Field getters return references. In any
+`X S -> Z`, Z is actually `Ref A` where A is the field's type.
+;;
+
+;; Reading a field ;;
+some_struct.some_field
+
+;; Writing a field ;;
+some_struct.some_field.`some_value`
+some_struct.some_field = `some_value`
+
+;;
+### Virtual fields
+
+Struct fields are abstractions defined with procs. What naturally follows is
+that a field needn't be stored in memory. Simply defining a getter proc gives
+a struct type another field.
+
+Many languages have special syntactic support for field / property getters.
+By unifying fields and procs, we get this for free, with no new concepts.
+
+Because we also unify scopes with structs and variables with struct fields,
+virtual variables should also be possible, by declaring a compile-time proc
+`S -> Z` where S is any hardcoded symbol. This is different from runtime
+virtual field procs and not demonstrated here.
+
+The proc definition syntax below is provisional and assumes
+[#modules_as_struct_literals] which is an experimental concept.
+
+This example "getter" computes a virtual field from other fields.
+
+The conditional syntax is provisional. See [#conditionals].
+
+The parentheses are optional and used for readability.
+
+The conditions could be simplified by making `String` convertible to `Bool`.
+See [#truthiness].
+;;
+guess_name = fn.{
+  X Person
+  Z String
+  Z case.{
+    (X.name  != ``)  X.name
+    (X.slug  != ``)  (`@` + X.slug)
+    (X.email != ``)  X.email
+    _                `(anonymous)`
+  }
+}
+
+;; Usage is identical to struct fields: ;;
+some_person.guess_name
+
+;;
+Shorter definition syntax. `X` is input.
+Input and output types are inferred.
+;;
+guess_name = fn.(case.{
+  (X.name  != ``)  X.name
+  (X.slug  != ``)  (`@` + X.slug)
+  (X.email != ``)  X.email
+  _                `(anonymous)`
+})
+
+;;
+Shorter version which assumes that "boolean" forms such as `and` and `or`
+are not limited to the input / output type `Bool`. See [#truthiness] which
+does not cover this use case properly.
+
+This mimics some dynamically typed languages, but with static typing.
+Given that the first element in the input to `or` is of type `String`,
+every other element must be either `String` or implicitly convertible
+to `String`, and there must be some way to test for truthiness.
+The latter means that `String` must be implicitly convertible
+to `Bool` in the current scope. Empty strings are falsy.
+;;
+guess_name = fn.(or.(
+  X.name
+  and.(X.slug (`@` + X.slug))
+  X.email
+))
+
+;; Same as above but with infix. ;;
+guess_name = fn.(
+  X.name | (X.slug & (`@` + X.slug)) | X.email
+)
+
+;; Shortest typed declaration. Result type is inferred. ;;
+guess_name Person.fn.(
+  X.name | (X.slug & (`@` + X.slug)) | X.email
+)
+
+;;
+### Struct field memory usage
+
+Not all struct fields occupy memory.
+- The pseudo-field `*` splurges fields from another type.
+- Pragmas don't use memory.
+- There may be more in the future.
+;;
+Some_struct_type = struct.{
+  ;; Virtual ;;
+  *           Another_struct_type ;; Splurges fields from another type. ;;
+  ::          pub                 ;; Struct-level pragma, doesn't use memory. ;;
+  value_field ::.pub              ;; Field-level pragma, doesn't use memory. ;;
+
+  ;; Real ;;
+  value_field Int                 ;; Uses memory. ;;
+  proc_field  fn.Int.Int          ;; Uses memory. ;;
+}
+
+;;
+### Constants
+
+This talks about variables, but since we're aiming to unify them
+with struct fields, this also applies to fields.
+
+Constants should be the default and mutability should be opt-in.
+
+Mutability applies to variables and values separately, but since this usually
+goes hand in hand, we mostly mix this together here.
+
+There are multiple kinds of constants:
+- Compile-time constants.
+- Execution-time constants.
+- Execution-time pseudo-constants.
+
+All constants have one thing in common: for their specific literal symbol,
+only `S -> Z` is defined, and `S X -> Z` is not defined. This resolves the
+conflict between `X Y -> Z` and `S Y -> Z` for variables holding a reference
+to a proc.
+
+Compile-time constants are either hardcoded primitive literals, or arbitrary
+values calculated by compile-time procs. The resulting value can be assigned
+to any variable, but is immutable, inlined into the executable, and on most
+systems stored in read-only memory.
+
+Execution-time constants have a value computed at runtime. They can't be
+reassigned, and the compiler rejects any attempts to modify the memory
+they reference.
+
+Execution-time pseudo-constants can't be reassigned, but the compiler
+allows to modify the memory they reference.
+;;
+
+;;
+### Proc overloads
+
+Procs can be overloaded on arity and input types. For any fixed X, it's
+perfectly valid to define any amount of `X S -> Z` with distinct S, and
+any amount of `X Y -> Z` with distinct Y.
+
+We don't plan to support overloading on Z because it interferes with type
+inference. Every proc is uniquely identified by its left side:
+
+  X Y   -> Z    -- Identified by `X Y`.
+  X S   -> Z    -- Identified by `X S`.
+  X S Y -> Z    -- Identified by `X S Y`.
+
+Proc declarations in sub-scopes can shadow procs coming from super-scopes,
+but conflicting declarations within one scope are not allowed.
+
+All proc declarations, whether they're overloads or overrides, are lexically
+scoped. Types don't carry procs along. A data type for which no procs are in
+scope is just a chunk of bytes with a known size. This is true even for
+"built-in" "primitives" such as integers.
+;;
+
+;;
+### Constant overloads
+
+Procs are constants, and constants are `S -> Z` procs. They're very close.
+We may end up implementing general constant overloads rather than just proc
+overloads.
+
+In that case, we'll aim to use the same declaration syntax for constants and
+procs. Quite a few languages do this. One good example is Odin:
+
+  Some_Type  :: struct {}
+  some_proc  :: proc() {}
+  some_const :: "some_value"
+
+The compiler will use type inference to resolve overloaded constants.
+A cast / type conversion / type assertion can be used to explicitly
+choose a variant.
+;;
+
+;;
+### Call syntax
+
+This is provisional and may be revised later. The important part is to keep
+the syntax light while avoiding ambiguity. The parser must be context-free.
+This makes syntax highlighting must easier.
+
+We have specific design requirements for the call syntax:
+- Several ordering styles:
+  - Unary `S X` (required).
+  - Unary `X Y` (not required, but comes out of `S X`).
+  - Unary `X S` (required for field getters).
+  - Binary `X S Y` (required for chaining).
+  - Allow using the same S in any position.
+- Easy to type.
+- Light appearance.
+- Avoid having to separate atomic tokens with `,` or `;`. The following must
+  be valid syntax for a list with 3 elements: `[one two three]`. Our data
+  notation forbids `,` and `;`, making this a hard requirement.
+
+So here's the current plan (`-` stands for any operator):
+- Operator binary infix: `arg_0 - arg_1`
+- Operator unary postfix: `arg_name.-`
+- Operator unary prefix: `-.arg_name`
+- Identifier unary postfix: `arg_name.proc_name`
+- Identifier unary prefix: `proc_name. arg_name`
+- Identifier binary infix: `arg_0 .proc_name. arg_1`
+
+Operator-shaped symbols are always used in binary infix call position, without
+dots, and all other calls involve dots. (Note that struct fields use getter and
+setter procs, without any dedicated syntax.)
+
+The big deal (really!) is we don't need the `:,;` separators / joiners.
+These are syntactically valid Clojure-style structures (list and dict).
+
+  [10 20 30]
+
+  {
+    one   10
+    two   20
+    three 30
+  }
+
+When rapidly writing and editing code, the cost of separators / joiners adds up
+real fast. It seems "invisible" to most programmers. My hypothesis is that most
+folks either haven't used languages without this issue, or haven't paid enough
+attention to how much time is spent fixing the errors caused by the "need" for
+these characters.
+
+Like Lisps, we use the same call syntax for runtime and compile-time procs.
+This allows to implement language features with library procs rather than in
+the compiler, while also keeping user code clean. Procs can be marked for
+compile-time execution at the declaration level.
+;;
+
+;;
+The pattern `S. X -> Z` is used for unary prefix calls. This notation can be
+used for ANY proc `X -> Z` bound to S in current scope.
+;;
+some_proc.`some_value`
+`some_value`.some_proc
+len.`some_string`
+`some_string`.len
+
+;;
+The pattern `X .S -> Z` is used for unary postfix calls. This notation can be
+used for ANY proc `X -> Z` bound to S in current scope.
+;;
+some_struct.some_field
+`some_string`.len
+
+;;
+The compiler splits `one.two` into `one .two` (note the space).
+Postfix calls don't need a space:
+;;
+some_struct.some_field
+
+;; Prefix calls need a space when LHS and RHS are symbols: ;;
+some_field. some_struct
+
+;; Alternatively, grouping a symbol "escapes" it: ;;
+some_field.(some_struct)
+
+;;
+The pattern `X.Y -> Z` allows to make a specific type `X` callable
+with a specific type `Y`.
+
+Consider a proc `String Int -> Uint8` which gets a byte at a position.
+If declared in the `X Y -> Z` style, without S, we can "call" a string
+with an integer. The following example should retrieve the byte "n".
+;;
+`some_string`.10
+
+;; Placeholder proc definition. The `_` puts it in scope anonymously. ;;
+_ fn.{
+  X String
+  Y Uint
+  Z (;; (Get and return byte at index.) ;;)
+}
+
+;;
+When Y is stored in a variable, `X Y -> Z` and `X S -> Z` are ambiguous.
+The compiler resolves this by prioritizing `X Y` over `X S`. This means
+that a later definition of `X S`, where S accidentally matches the name
+of the variable holding Y, does not interfere with prior callsites.
+
+This invokes the same "rune at index" proc as above:
+;;
+`some_string`.(some_integer_variable)
+
+;;
+The pattern `X .S. Y -> Z` is used for binary infix calls.
+
+X dot is placed on both sides to make arity syntactically unambiguous,
+avoiding conflict with whitespace separation of atomic tokens.
+
+This notation can be used for ANY proc `X Y -> Z` bound to S in current scope.
+;;
+LHS_value   .proc_name.  RHS_value
+some_struct .some_field. `some_new_value`
+
+;;
+Operators are always binary infix and don't need dots.
+This example also demonstrates overloads.
+;;
+10    + 20    ;; Int    Int    -> Int ;;
+`one` + `two` ;; String String -> String ;;
+
+;;
+Variable declaration and initialization could be defined in stdlib code as a
+compile-time proc. Recall the proc pattern `X S Y -> Z`. Variable declaration
+would be defined as a proc `X = Y -> Nil` where X is a literal symbol.
+
+It takes the compiler's view of any piece of code where it's used. The view
+includes AST, scope, and more. It requires X to be a literal symbol not yet
+declared, checks types, reserves stack space, emits assembly instructions,
+and modifies the scope to actually declare the variable.
+;;
+some_ident = `some_val`
+
+;; For variable reassignment, we could define a separate operator. ;;
+some_ident := `some_new_val`
+some_ident <- `some_new_val`
+
+;; `=` should also be usable for struct field assignment. ;;
+outer.middle.inner.field = `some_val`
+
+;;
+Alternatively, see other parts of this document for unification of
+scopes with structs, and variables with fields. In that case, we
+may use `some_ident.some_new_val` for reassignments.
+;;
+some_ident.`some_new_val`
+
+;; Unary operator calls require a dot: ;;
+-.123
+123.-
+
+;;
+### Precedence
+
+Infix is left-associative. The following is `((((10 - 20) / 30) + 40) * 50)`:
+;;
+10 - 20 / 30 + 40 * 50
+
+;;
+Unary calls `X.Y -> Z` and `X.S -> Z` take precedence over infix calls.
+The following becomes `12.34 - (56.78 .trunc)`:
+;;
+12.34 - 56.78 .trunc
+
+;; For unary calls on results of infix expressions, use grouping: ;;
+(12.34 - 56.78).trunc
+
+;; Or simply split up the expression: ;;
+val = 12.34 - 56.78
+_   = val.trunc
+
+;;
+Unary prefix calls are right-associative.
+The following becomes `one.(two.three)`.
+;;
+one. two. three
+
+;;
+In principle it's possible to implement a syntax where infix precedence also
+respects whitespace, but our data notation does not support that. Even though
+the parser is encouraged to preserve references to source code for all tokens,
+it's not required to preserve it for primitives such as numbers. Which means
+we don't always know the spacing between tokens.
+;;
+
+;;
+Calls combine operands into expressions. This means that in list and dict
+literals, we often don't need explicit grouping:
+;;
+[
+  10 + 20 ;; First expression = first element. ;;
+  30 + 40 ;; Second expression = second element. ;;
+]
+{
+  one 10 + 20 ;; First field. ;;
+  two 30 + 40 ;; Second field. ;;
+}
+
+;;
+### Chaining
+
+We support infix and postfix because many complex expressions, such as long
+data transformation pipelines, are nicer to write in a chainable style.
+
+Some languages, notably Lisps, have only the prefix call notation, and end up
+inventing pipeline macros, such as Clojure's `->` and `->>`. Users end up
+having to convert code between two styles when adding or removing steps.
+Having native infix and postfix spares us from that.
+;;
+
+;; Unary chaining: ;;
+one.two.three.four
+
+;;
+Binary chaining.
+
+This example presumes the existence of a compile-time proc `->`
+for inline proc definitions.
+;;
+some_list
+  .map.    (val       -> val / 2)
+  .filter. (val       -> val % 2)
+  .fold.   ([acc val] -> acc + val)
+
+;;
+Binary chaining with alternative proc syntax.
+Implicit symbol `X` stands for first argument.
+;;
+some_list
+  .map.    fn.(X / 2)
+  .filter. fn.(X % 2)
+  .fold.   fn.(X.0 + X.1)
+
+;; `fold` probably takes a binary proc: ;;
+.fold. fn.(X + Y)
+
+;;
+If we could get rid of expression grouping, we'd reserve
+one pair of delimiters entirely for procs:
+;;
+some_list
+  .map.    (X / 2)
+  .filter. (X % 2)
+  .fold.   (X + Y)
+
+;;
+When LHS and RHS are types or groups of types, `->` constructs a proc type.
+Procs can only be `X -> Z` and `X Y -> Z`.
+;;
+String -> Int
+(String String) -> String ;; Undecided between () and []. ;;
+[String String] -> String ;; Undecided between () and []. ;;
+
+;; Alternative way to construct proc types. ;;
+fn.String.Int           ;; X -> Z ;;
+fn.String.String.String ;; X Y -> Z ;;
+
+;;
+### First-class procs
+
+Procs are first-class. They can be put into variables and passed around.
+This means we must define how to call a proc stored in a variable.
+;;
+
+;; Proc type `X -> Z` is called in the `S X -> Z` style: ;;
+some_proc_variable.`some_input_value`
+
+;; Proc type `X Y -> Z` is called in the `X S Y -> Z` style: ;;
+`left_input` .some_proc_variable. `right_input`
+
+;;
+Some operations involve first-class procs with no input or output, called only
+for side effects, like `void(void)` in C. They have the type `Nil -> Nil` and
+are called in the `S X -> Z` style by passing nil:
+;;
+some_proc_variable.nil
+
+;;
+Overloads are impractical for mutable variables, but might be practical for
+constants. Supporting constant overloads allows to completely unify constant
+and proc declarations.
+
+See also:
+- [#scopes_are_structs]
+- [#variables]
+- `S -> Z`
+- `S X -> Z`
+
+Unification of scopes with structs, and variables with struct fields, creates
+a syntactic ambiguity between variable assignment and invoking a proc value
+stored in a variable. X variable with an `X -> Z` proc is called like this:
+
+  some_proc.some_val
+
+Which is the same syntax as `S X -> Z` for assigning that variable.
+
+The conflict is resolved in three ways. If the variable is constant, then the
+assignment proc `S X -> Z` is simply not defined for its symbol. If the types
+are distinct, the compiler can unambiguously choose one. If the types are
+identical, then the variable is holding a proc which takes a proc of the same
+proc type; the code is doing something crazy and mad and is on its own.
+;;
+
+;;
+## Refs
+
+The language has a concept of generic references, similar to Rust's trait
+`Deref` and Clojure's `IDeref`. We call it `Ref`. Any `Ref X` is an opaque
+value which implicitly dereferences to `X` on demand.
+
+Not to be confused with reference types, which is a distinct concept.
+See [#type_system] for those.
+
+References must be non-nilable by default.
+Nilability / optionality should be opt-in.
+
+`Ref` implementations may be either read-only, or read-write. A read-write
+`Ref X`, in addition to implicitly dereferencing to `X` on a read, also
+accepts `X` on a write.
+
+The most notable refs are pointers. The language should have automatic memory
+management without GC with ownership tracking, in the spirit of Swift and
+Nim. There may be multiple strategies. We might end up with exclusively
+owning pointers, like Rust `Box`, and also with multi-ownership pointers,
+like Rust `Rc`. All of them would be `Ref`.
+
+Refs are not limited to pointers. For example, a reactivity / observability
+library would provide observable references. Their implementation would be
+opaque, they could be "fat pointers" or something even fatter. By virtue of
+being `Ref`, they dereference to underlying values on demand.
+
+Concurrent code involves futures (`Fut`). It seems likely that a `Fut X` is
+also a `Ref X`. Clojure does this. A future's eventual value or error would
+be stored and reused for every dereference. Futures could also be lazy.
+
+X `Ref` is not necessarily a _reference type_. The concepts are distinct. `Ref`
+is just a interface / trait. Some refs, such as smart pointers, are unavoidably
+reference types, but many could be value types. This should be transparent /
+invisible to code using them.
+;;
+
+;;
+Conceptually, every variable of `X` is a read-write `Ref X`. Since scopes are
+structs and variables are fields, this also applies to struct fields. Fields
+are refs. Accessing a struct field returns a `Ref` to that field's memory.
+This allows field assignments to work:
+;;
+ref = some_struct.some_field ;; `Ref X` ;;
+val = ref.*                  ;; `Int` ;;
+ref = 123                    ;; Assigns the field. ;;
+some_struct.some_field = 123 ;; Identical to the above. ;;
+
+;; Also works for nested structs: ;;
+ref = struct_0.struct_1.field_0
+ref = 123
+log.(struct_0.struct_1.field_0) ;; 123 ;;
+
+;;
+Procs which implement conditionals, such as `if`, might end up returning
+references: `Ref X`. Dereferencing the result evaluates the conditional.
+
+These refs should exist in memory only at compilation time, not at program
+execution time. Furthermore, they should be compatible with compile-time
+constant evaluation and dead branch elimination.
+;;
+opt = if.(predicate).then.(expression)             ;; Ref Opt X -> Opt X ;;
+val = if.(predicate).then.(branch0).else.(branch1) ;; Ref X -> X ;;
+
+;;
+## Named parameters
+
+Complicated APIs tend to grow over time, adding parameters / options.
+Sometimes variants can be disambiguated with overloads, sometimes they
+can't. One nice solution is to encourage named parameters.
+
+Most languages support only one form of proc calls, where parameters and
+arguments are a heterogeneous tuple. This easily leads to horrible APIs,
+readily apparent from a look at OS syscalls in any C standard library.
+
+To keep complex APIs maintainable while allowing evolution without breakage,
+we encourage named parameters and arguments. Some languages already take this
+approach; the most notable current example is Swift, which inherited this
+from Objective-C, which inherited this from Smalltalk. Swift more or less
+enforces named arguments. It also treats them as a separate concept from
+structs. We will simply use structs.
+
+We should make it very easy to declare an inline anonymous struct type as an
+input to a proc, and very easy to use it inline at callsites.
+
+Because we have overloads, APIs can evolve over time. A proc can start, for
+example, by taking a string. Later it adds an overload that takes a URL.
+Eventually it defines the "full" configurable version that takes a struct,
+and redefines the older variants to call the full one.
+
+Sample definition below. The exact syntax is TBD.
+;;
+fn.{
+  name some_proc
+
+  ;; Input definition. "X" means the input in `X -> Z`. ;;
+  X {
+    arg0 type0
+    arg1 type1
+    arg2 type2
+  }
+
+  ;;
+  Output definition. "Z" means the output in `X -> Z`.
+  The compiler infers the type of Z from the last expression.
+  ;;
+  Z (
+    some_expr
+    some_expr
+    some_expr
+    some_result
+  )
+}
+
+;; Calling this proc: ;;
+some_proc.{
+  arg0 val0
+  arg1 val1
+  arg2 val2
+}
+
+;; For complex APIs, we also encourage named _return_ parameters via structs: ;;
+fn.{
+  name some_proc
+  X {
+    inp0 type0
+    inp1 type1
+  }
+  Z (
+    out2 = some_computation
+    out3 = some_computation
+    {
+      out2 out2
+      out3 out3
+    }
+  )
+}
+
+;;
+Many procs will have non-struct-taking overloads for simple cases,
+with a full struct-taking version for more complex cases.
+
+For example, an "open" function would often be called with just a string.
+The following lines are equivalent.
+;;
+fs.open.`readme.md`
+fs .open. `readme.md`
+
+;;
+Another overload would take a file URL.
+The following lines are equivalent.
+;;
+fs.open.(some_file_url)
+fs.open. some_file_url
+fs .open. some_file_url
+
+;;
+The final overload would be the full configurable version
+taking a struct.
+;;
+fs.open.{
+  path `readme.md`
+  read true
+  write true
+  create true
+}
+
+;;
+## Modules
+
+Every module is a struct whose type is inferred by the compiler.
+Variables declared in module root are its "fields".
+
+Since modules are structs, structs are modules. Everything below may also
+apply to structs. We may even make it possible to "import" a struct, if a
+use case arises.
+
+Each variable in module root is `S -> Z`. For each variable, the compiler
+also automatically declares `M S -> Z` where M is the module's own type.
+This is used with named imports.
+
+For each `S X -> Z` proc in module root, the compiler automatically declares
+a matching `M S X -> Z` where M is the module's own type. This is used with
+named imports.
+
+Binary procs can be declared with either `X Y -> Z`, making X callable with Y,
+or with `X S Y -> Z` which requires infix S in calls.
+
+A module can be "callable". Any `M X -> Z`, where M is a module type, makes
+it possible to "call" that module with X. Such procs can be defined either
+inside or outside that module.
+
+Importing a module always dumps its binary `X Y -> Z` procs into current
+scope. Access mode for `S -> Z` and `S X -> Z` depends on import style.
+;;
+
+;;
+When using a named import:
+
+Module-level variables are dumped into current scope in their `M S -> Z`
+form and can be accessed as `mod_name.var_name`.
+
+Module-level unary `S X -> Z` procs are dumped into current scope in their
+`M S X -> Z` form and can be called as `mod_name.proc_name. some_input`.
+The extra space is only needed for named inputs, not for literal values.
+
+This example also uses inline structs in proc calls.
+See [#named_parameters] for details.
+
+The exact import syntax is TBD.
+;;
+str = import.`std:strings`
+
+str.join_lines.[`one` `two` `three`]
+
+str.join.{
+  src [`one` `two` `three`]
+  sep `_`
+}
+
+str.split.{
+  src `one two three`
+  sep ` `
+}
+
+;;
+An include-style import is very similar to dumping an entire module into the
+current scope. However, identifiers visibly declared in the current module
+take priority over "invisible" identifiers from that module. When importing
+in a sub-scope, declarations from super-scopes override conflicting ones from
+the imported module.
+;;
+include.`std:strings`
+
+join_lines.[`one` `two` `three`]
+
+join.{
+  src [`one` `two` `three`]
+  sep `_`
+}
+
+split.{
+  src `one two three`
+  sep ` `
+}
+
+;;
+### Imports
+
+Modules are files, and imports are file-oriented: you don't import a package,
+you import a specific file. This applies to standard library modules, local
+modules, and external library modules.
+
+Imports are namespaced by protocols, similar to URL protocols.
+The most important ones are `std:` and `git:`. The set of
+supported protocols is likely to grow over time.
+
+Initially we'll require explicit file extensions. This has many advantages:
+- Ease of learning: makes it totally clear where the system finds the module.
+  Languages with "magic" package resolution are hostile to beginners.
+- Ease of implementation: the system doesn't need to do any "magic".
+- Friendly to network imports: a file is resolved unambiguously
+  in a single network request. This is also why the ES module
+  system, designed for browsers, requires explicit file extensions.
+- Avoid ambiguity when supporting imports for different file types.
+
+To clarify the latter, if we treated `./some_mod` as `./some_mod.mox`,
+and also had support for `.json` imports, there would be an ambiguity
+between `./some_mod.json` and `./some_mod.json.mox`.
+
+Once the system is stable, we may consider supporting implicit file extensions
+and package entry files, similar to how it's done in the JS world.
+;;
+
+;; Stdlib imports: ;;
+os import.`std:os.mox`
+io import.`std:io.mox`
+
+;; Local imports use explicitly relative paths or absolute paths: ;;
+some_util import.`./util.mox`
+some_lib  import.`/Users/me/some_private_lib/some_file.mox`
+
+;;
+For libraries, piggybacking on Git seems like a good start.
+Go and Swift did that to great success:
+;;
+toml import.`git:example.com/some_author/toml/index.mox`
+
+;;
+HTTPS imports have been very successful in the JS world.
+There are many CDNs serving library code. For us, this
+seems relevant for native modules, but could be useful
+for JS interop (importing JS libs).
+;;
+some_lib import.`https://example.com/some_lib/index.mox`
+some_lib import.{
+  src `https://example.com/some_lib/index.mjs`
+  type `js`
+  sym {
+    SOME_CONST String
+    some_proc  Some_type -> Other_type
+  }
+}
+
+;;
+Finally, the "real" case. Any real project wants to declare specific dependency
+versions in its config. This also allows to give them names and avoid having
+to use URLs in imports.
+
+Something very similar is supported by Swift, but perhaps JS is the most
+famous example. Both have used this to great success.
+
+Config and usage:
+;;
+{
+  deps {
+    lib_0 {
+      type `git`
+      repo `https://example.com/author_0/lib_0.git`
+      tag  `0.1.0`
+      hash `d5c4e6b776d64add84143bf54a0e2713` ;; Auto-inserted ;;
+    }
+    lib_1 {
+      type `git`
+      repo `https://example.com/author_1/lib_1.git`
+      tag  `0.2.0`
+      hash `b6b25b7cc6b44521aa539a1141444936` ;; Auto-inserted ;;
+    }
+  }
+}
+lib_0 import.`lib_0/some_file.mox`
+lib_1 import.`lib_1/another_file.mox`
+
+;;
+### C interop: import and export
+
+Play nicely with the industry-standard ecosystem.
+
+We want to be able to easily import C-like libraries. Depending on our bootstrap
+strategy, this could be delayed, but may also be needed immediately for the
+language itself.
+
+We'd like to automatically generate bindings from header files. This involves
+preprocessing, parsing, and understanding C. Preprocessing could be done by
+shelling out to a C compiler, but this doesn't help us with parsing, and we
+don't want any "shelling out" to begin with. The practical solution is probably
+to integrate libclang or cparser, which can handle all these steps, and give us
+access to the AST for bindings generation. Ironically this requires explicit
+bindings upfront.
+
+We should probably print auto-generated bindings to a file, preferably
+preserving the original comments. This lets the users actually see the
+definitions they're working with. In addition, this serves as caching,
+so we don't need to regenerate bindings when there's no change.
+
+For non-shared libraries, the preferred way is probably to explicitly provide
+header and object paths, as relative paths since they're likely to be vendored.
+Seamless interop should look roughly like this:
+
+  some_lib import.{
+    type   `c`
+    header `./vendor/some_header.h`
+    object `./target/some_object.o`
+  }
+
+In addition to import, we want to support export. We'd like to auto-generate
+C-style libraries: nicely commented header files + object files. This requires
+translation from our semantics to C semantics, the exact inverse of the import
+translation, and needs to respect the C ABI.
+
+Auto-generation of headers was solved for Rust via `cbindgen`, which could be
+a useful example for us: `https://github.com/mozilla/cbindgen`.
+
+Supporting export also automatically makes the language embeddable, since the
+compiler (which is a library!) can then be imported by a C/C++ app. Existing
+projects could embed this for "scripting" without taking a performance hit,
+once we meet our performance goals.
+
+Interop with C++ is trickier; it's unclear if we can ever implement that
+other than via C wrappers (import) and printing out C++ code (export).
+;;
+
+;;
+Since automatic generation of bindings is not available at first, we'll need
+the ability to declare them. This means respecting the C ABI. Many languages,
+including Rust, Nim, Zig, and many more, make special provisions for C in their
+type systems, basically replicating the C system and requiring its use in FFI.
+We'll have the exact same headaches.
+
+In binding declarations, we could apply some of those provisions, such as struct
+packing, automatically. In addition, the compiler would require that all types
+are either C types, or types which are C-compatible and map exactly to some C
+types. The latter should be true for all fixed-size numbers supported in C, as
+well as ordinal enums.
+
+We provide conversion procs for all C types, mapping them to our types.
+Free or very cheap conversion is implicit, expensive conversion explicit.
+;;
+some_lib import.{
+  type   `c`
+  object `./target/some_object.o`
+  sym {
+    SOME_CONST Uint32
+    some_proc  [C.string C.int] -> C.int
+  }
+}
+pair        `some_string`.cstring_pair
+result_code some_lib.some_proc.(pair)
+
+;;
+### Import types
+
+We should ship with at least two import types:
+- Import language code.
+- Import arbitrary bytes.
+
+Being able to import arbitrary bytes is handy for a variety of cases. It allows
+libraries to keep data in separate files next to code, but when imported, make
+it available programmatically. It allows apps to bundle assets straight into an
+executable, simplifying distribution. When the compiler runs in watch mode, it
+should watch imported files and update modules on changes to those files.
+
+Go ended up adding support for embedding arbitrary files in a slightly awkward
+way, which involves special support in the compiler, special pragmas in user
+code, and having to import a special pseudo-package. They still considered it
+worth doing. Clearly use cases exist.
+
+The Go embed approach is interesting in that it supports directories.
+It lets you choose between importing a blob and importing a virtual
+file system. One of the benefits is not having to hardcode every file
+path. If we're serious about embedding, we'll have to do the same,
+but the implementation can be delayed.
+
+The likely approach is to define an interface (let's say `Importer`) supported
+by the `import` proc, which allows to define the import behavior for any type,
+by implementing that interface for a type. It would be invoked at import time.
+The implementation of this interface for `String` and `[Uint8]` is to simply
+read the target file and return the bytes as-is. The implementation of this
+interface for `FS` (a virtual file system) is to inspect the file system on
+disk and read all the the directories and files, storing the data in memory
+to be eventually included into the executable.
+
+Finally, we may consider supporting inline-pluggable decoders.
+Could be handy for importing structured data such as JSON or TOML.
+Our own data notation would be supported by default, without needing
+to provide a decoder.
+;;
+some_text import.{
+  src  `./some_text.txt`
+  type String
+}
+some_blob import.{
+  src  `./some_blob.bin`
+  type [Uint8]
+}
+tzdata import.{
+  src  `./iana_timezone_data`
+  type FS
+}
+some_config import.{
+  src  `./config.mox`
+  type Config
+}
+some_config import.{
+  src    `./config.json`
+  type   Config
+  decode json.decode
+}
+
+;;
+### Module-level overrides
+
+Part of the reason for treating modules as values, and module-level procs as
+the pattern `X S Y -> Z`, similar to methods in other languages, is to allow
+overrides.
+
+Let's say the module `std:paths` implements path operations. It defines a
+module-level constant `SEP = "/"` and uses that throughout the module.
+
+Now let's say someone is writing code for RISC OS, where FS paths denote root
+with `$` and separate directories with `.`.
+
+User code needs `SEP` to be `"."`, and probably needs to override procs such
+as `is_root` and `is_abs` to respect the root prefix `$`. The rest of the
+code in `std:paths` should respect the overrides. As long as the module is
+carefully written to support such overriding, by not hardcoding separators,
+the rest of it should "just work".
+
+The simplest way of supporting overrides is probably via module inheritance.
+A user declares `riscos/paths` which inherits from `std:paths` by dumping
+everything in, include-style, and declares its own constants and procs as
+overrides. The compiler respects this by copying the original procs and
+specializing them for the new module.
+;;
+
+include."std/paths"
+SEP = `.`
+;; ...Plus various proc redefinitions. ;;
+
+;;
+## Block expressions
+
+It's often convenient to execute a sub-scope with intermediary variables
+and grab the output. Many languages support treating blocks as expressions.
+
+The stdlib provides a special proc for this. In this sketch, it's called `do`
+and has the signature `X -> Z` where X matches any list literal. It's marked
+for immediate compile-time execution. It receives AST and other compile-time
+context and emits code for executing this sequence of expressions. It also
+infers Z (the output type) from the last expression and tells the compiler
+what Z is.
+;;
+result = do.(
+  one = 10
+  two = 20
+  one + two
+)
+
+;;
+## Scopes are structs
+
+Proto-concept. Generalization of "modules are structs".
+
+Every block of code with its own scope, starting at module root and all the
+way down, is conceptually considered a struct. Variables are its fields.
+
+We could support evaluating arbitrary blocks as structs, _exactly_ like we do
+for modules.
+
+The block executes once. The result is a struct whose type is inferred by the
+compiler. Public procs from its scope are dumped into the caller's scope.
+This lets the caller access its variables (struct fields) and call procs.
+
+This example assumes public by default. We prefer private by default, but the
+way of making symbols public is not yet defined at this point in the document.
+;;
+
+val = Struct.(
+  one = 10
+  ;; This side effect runs exactly once. ;;
+  stdout.println.[`intermediary value: ` one]
+  two = one + 20
+)
+stdout.println.(val.one)
+stdout.println.(val.two)
+
+;;
+If these variables are mutable, we can reassign them. This example assumes
+that variable reassignment is done via implicitly declared procs `S X -> Z`.
+See [#variables] and [#struct_fields].
+;;
+val.one.40
+val.two.50
+stdout.println.[val.one ` ` val.two]
+
+;; Offtopic: stdlib is likely to provide logging shortcuts. ;;
+echo.[val.one ` ` val.two]
+log.[val.one val.two]
+
+;;
+## Blocks as struct literals?
+
+Another proto-concept. If scopes are structs, the inverse is true
+and we can use struct literals for blocks!
+;;
+
+val = do.{
+  one 10
+
+  ;;
+  The field name `_` tells the compiler to discard this.
+  This side effect runs exactly once.
+  ;;
+  _ stdout.println.[`intermediary value: ` one]
+
+  two (one + 20)
+}
+
+log.(val.one) ;; 10 ;;
+log.(val.two) ;; 30 ;;
+
+;;
+## Modules as struct literals?
+
+An extention of the previous wild idea / proto-concept. If blocks are structs,
+then modules are structs. Like inside {}, but with the braces omitted. Since
+the parser and compiler understand dict / struct literals, this gives us an
+easy way to provide the "declaration" intrinsic without any special syntax
+and without the compiler having to predeclare a symbol for it.
+
+Thus, the following code should be valid in module root.
+These are key-value pairs, where keys are declarations.
+;;
+some_const 10
+some_proc  fn.<definition_here>
+
+;;
+If we go full hog and generalize this to _all_ scopes, then most of the code
+should consist of alternating key-value pairs. Values are assigned to keys.
+Inside blocks, keys refer to values.
+;;
+some_result {
+  some_field {
+    one   10
+    two   20
+    three one + two
+  }
+  another_field some_field.three
+}
+
+;;
+### Imports in struct-literal modules
+
+It follows that imports are just regular compile-time expressions assigned
+to names, without their own declaration syntax.
+;;
+
+;; Named import: ;;
+str import.`std:strings`
+
+;; Dump/include import: ;;
+* import.`std:prelude`
+
+;;
+The treatment of `*` as dump / include / splurge / spread is not limited to
+module scopes. We can use this for dicts and structs:
+;;
+some_dict {
+  *               another_dict ;; Splurge all fields from `another_dict`. ;;
+  `another_field` nil          ;; Exclude this field. ;;
+  `some_field`    `some_override`
+}
+some_struct {
+  *          another_struct ;; Splurge all fields from `another_struct`. ;;
+  some_field `some_override`
+}
+
+;;
+## Proc declarations
+
+First, see the section [#procs_and_calls] for proc signatures, proc patterns.
+
+Declaration ≠ definition. A declaration puts something in scope, possibly
+without an implementation. A definition is an anonymous implementation.
+
+There are 2 proc arities: `X -> Z` and `X Y -> Z`, and 6 ways of resolving.
+
+If module root is a struct literal, procs are declared with a field name
+followed by a proc definition / implementation.
+
+The examples below assume the existence of a hypothetical `fn` proc, provided
+either by the compiler or by the standard library. It takes an arbitrary
+expression and returns a proc implementation.
+
+The following defines and declares a program's entry point. This definition
+syntax is provisional. This definition does not specify input and output
+types, and is implicitly `Nil -> Nil`.
+
+This declaration assumes that [#modules_are_structs].
+;;
+main fn.(stdout.println.`hello world`)
+
+;;
+If a proc `S X -> Z` is declared in the current scope, it can be called with
+the syntax `S.X`, and the proc itself is accessed with the syntax `X.S`:
+;;
+`hello_world`.len ;; 11 ;;
+String.len        ;; Proc of type `String -> Int`. ;;
+
+;;
+Since arity is fixed and the concepts `X -> Z` and `X Y -> Z` are prolific in
+this document, we might as well standardize the names X Y Z. In a declaration,
+they refer to the input and output _types_. In a definition, they refer to the
+input and output _values_.
+;;
+join_lines fn.{
+  ;; Input type: must be a sequence of strings. ;;
+  X [String]
+
+  ;; We haven't declared Y, so the proc is unary: `X -> Z`. ;;
+
+  ;; Output type: returns a string. ;;
+  Z String
+
+  ;;
+  Output implementation.
+
+  This example also gives a shot to a simple but wild idea. If modules are
+  structs and their fields are evaluated in dependency order, it should be
+  easy to do the same for all structs, including block structs. This means
+  fields can be declared out-of-order.
+
+  Most likely, fields are SSA (assigned only once).
+  Overloads may be supported, just like in modules.
+  ;;
+  Z {
+    ;;
+    The field `Z` is the output. We assign it here,
+    so it will be returned unless there's a panic.
+
+    Assumes our scope has a `join` compatible with this call signature.
+    `std:strings` should provide it and this example implies an import.
+    ;;
+    Z join.{
+      src X
+      buf buf
+      sep "\n"
+    }
+    ;; These fields are private to the block. ;;
+    buf     String.{cap buf_len}
+    len     X.sum.(String.len) ;; Input byte count. ;;
+    buf_len len + X.len - 1    ;; Ignores `X.len == 0` 😅. Don't! ;;
+  }
+}
+
+;;
+Closer to how most languages declare procs. Again, this isn't
+built-in, but library-declared. Possibilities are endless.
+;;
+join_lines fn.[
+  [String] -> String
+
+  len = X.sum.(X.type.len) + X.len - 1
+  buf = String.{cap len}
+  join.{src X buf buf sep "\n"}
+]
+
+;;
+Another possibility.
+
+`fn` can be chainably "called" to construct a proc type, `[String] -> String`
+in this case, and any proc type can be "called" with a body to construct an
+actual implementation, an instance of that proc type.
+;;
+join_lines fn.([String]).(String).[
+  len = X.sum.(X.type.len) + X.len - 1
+  buf = String.{cap len}
+  join.{src X buf buf sep "\n"}
+]
+
+;;
+If the above works, then since the syntax `[String] -> String` constructs a
+proc type, it can also be called to implement the proc.
+;;
+join_lines ([String] -> String).[
+  len = X.sum.(X.type.len) + X.len - 1
+  buf = String.{cap len}
+  join.{src X buf buf sep "\n"}
+]
+
+;;
+Using `_` makes a field anonymous. This can be used to declare overloads for
+patterns `X -> Z` and `X Y -> Z` without giving them a symbolic name. See the
+sections [#procs_and_calls], [#proc_overloads], [#call_syntax].
+
+This proc makes it possible to call a `String` with a `Uint`
+to access a byte at that index.
+;;
+_ fn.{
+  X String
+  Y Uint
+  Z Byte
+  Z (;;
+    (ensure data pointer is not nil)
+    (check bounds)
+    (pointer arithmetic)
+  ;;)
+}
+_ fn.[
+  (String Uint) -> Byte
+  ;; ... ;;
+]
+
+;; Usage: ;;
+`some_string`. 10 ;; 'n' ;;
+`some_string`.(10) ;; 'n' ;;
+
+;;
+## Catch-all procs
+
+We may want the ability to define catch-all procs which match any type on
+some of their inputs. This could be useful for traits. A trait could provide
+a default implementation for all types at once, with special overloads for
+specific types.
+
+This raises an issue of proc overload specificity and how to decide
+overload priority, but we already have that with regular overloads.
+;;
+
+;;
+## Proc delimiters
+
+Under consideration: if we could get rid of expression grouping,
+we could then reserve one set of delimiters entirely for procs.
+
+The trouble with this idea is that it's really hard to get rid of grouping.
+It's needed for some kinds of infix-heavy code, especially arithmetic.
+Additionally, grouping a single value allows to "escape" symbols in calls:
+
+  case.(some_value).{<cases>}
+;;
+
+add2 (X + Y) ;; Declaration. ;;
+10 .add2. 20 ;; Usage. ;;
+
+;; Declaration ;;
+join_paragraphs ("\n\n" .join. X)
+
+;; Usage ;;
+join_paragraphs.[`one` `two` `three`]
+
+;; Makes for a nicer "hello" program: ;;
+main (log.`hello_world`)
+
+;;
+One really nice thing about proc-only delimiters
+is how they map naturally to blocks.
+
+Swift sets a nice precedent by using {} for blocks and closures alike, and
+allowing to pass a closure after the closing parentheses to functions which
+take a closure as the last argument. This allows to define custom control
+structures which looks exactly like the built-in keywords which take blocks.
+
+If we had proc delimiters, we would consistently use them for blocks,
+like in the "hello" example above.
+
+The following evaluates a block and returns its evaluated scope as a
+struct with the fields `one` and `two`:
+;;
+do.(
+  one = 10
+  two = 20
+)
+
+;;
+## Conditionals
+
+Like most of the language, conditionals should be defined in the standard
+library as compile-time procs. The compiler core shouldn't have to know
+anything about them. External libraries should be able to define more.
+
+These are rough sketches. We have infinite possibilities.
+;;
+
+;; Variadic `and`: ;;
+and.(one two)
+and.(one two three)
+and.(one two three four)
+
+;; Variadic `or`: ;;
+or.(one two)
+or.(one two three)
+or.(one two three four)
+
+;; Binary `and`: ;;
+one & two
+one & two & three
+one & two & three & four
+
+;; Binary `or`: ;;
+one | two
+one | two | three
+one | two | three | four
+
+;;
+If-then-else could look like this.
+See [#refs] for an explanation.
+;;
+opt = if.(predicate).then.(expression)             ;; Ref Opt X -> Opt X ;;
+val = if.(predicate).then.(branch0).else.(branch1) ;; Ref X -> X ;;
+
+;; Multi-line: ;;
+val = if.(predicate)
+  .then.(branch_then)
+  .else.(branch_else)
+
+;;
+C-style ternary "if" should be easy to implement
+and will probably be preferred in the end.
+;;
+val = predicate ? branch0 : branch1
+
+;;
+A Lisp-style "if/then/else" should be easy to implement.
+Convenient to write, but less readable.
+;;
+val = choice.(
+  predicate
+  branch_then
+  branch_else
+)
+
+val = case.(some_value).{
+  `possible_value_0` branch_0
+  `possible_value_1` branch_1
+  `possible_value_2` branch_2
+  _                  branch_default
+}
+
+val = case.{
+  predicate_0 branch_0
+  predicate_1 branch_1
+  predicate_2 branch_2
+  _           branch_default
+}
+
+val = case.{
+  when some_predicate
+  then branch_then
+  else branch_else
+}
+
+case.{
+  when some_value
+  then log.`truthy`
+  else log.`falsy`
+}
+
+;;
+Since we allow and heavily use duplicate keys in {} literals, we could easily
+support this keyword-style syntax as well. Like all other special expressions,
+this would be done entirely in (standard)library code, not in compiler core.
+External libraries can invent their own alternatives. That said, stdlib
+conditionals will probably get special support from syntax highlighters.
+;;
+case.{
+  when one   then two
+  elif three then four
+  elif five  then six
+  else seven
+}
+
+;;
+### Truthiness
+
+There's "some" and "truthy".
+
+A value is considered "some" when it's not nil. Non-nilable types are
+automatically "some". Nilable types do a runtime check.
+
+A value is considered "truthy" if automatic conversion to `Bool` is
+implemented for its type and the result is `true`. This also applies
+to `Bool` since every type is automatically convertible to itself.
+
+`Nil` may be auto-convertible to `Bool`, in which case the result
+will always be `false`.
+
+We don't define other automatic conversions to `Bool`.
+User code should be free to define its own.
+
+Conditional forms such as `if` and `case` take `Bool` in predicate positions.
+Types which auto-convert to `Bool` can be passed in those positions without
+explicit conversion.
+;;
+
+;;
+## Type system
+
+The current plan is to start with a type system similar to Nim's. Most likely,
+we'll make various alterations that suit our needs better. Swift's system is
+also another nice candidate to pilfer from.
+
+Implementation of types not needed for compiler bootstrapping can be delayed.
+It also depends on how we bootstrap. The following is roughly in priority order,
+but not exactly.
+
+- Machine words.
+- Other integers (8bit / 16bit / 32bit / 64bit).
+- Floats (compiler doesn't need them until user programs do).
+- Fixed size arrays.
+- Variable-size lists (slices / vectors).
+- Procs (funcs).
+- Reference types (non-nil by default).
+- Structs.
+- Enums.
+- Misc common data structures, most importantly dicts and sets.
+- First-class types (compile-time reflection).
+- Inheritance (it's not just for "objects").
+- Generics (see [#generics]).
+
+Most of this requires no special explanation.
+
+One special note is that we aim to keep most type implementations in library
+code and out of compiler core. It should be possible for external libraries
+to implement types which feel just as first-class as the stdlib types. For
+example, it should be possible to implement fixed-precision decimals which
+feel just like native integers and floats, with implicit conversion from
+literals, operators, etc.
+
+Haskell / GHC may provide examples of keeping built-in types in library code.
+We should look into that.
+
+### Reference types
+
+Some types and behaviors are unavoidably referential.
+
+Prioritize safety, then performance:
+- References are not nil.
+- Nil is opt-in and always checked.
+- No unsafe memory sharing by default (Rust's `Send`).
+- Implicit copy on write for immutable types.
+
+Most languages use a mix of value types and reference types.
+This is even true for heavily object-oriented languages:
+- Smalltalk never truly went for "everything is a unique object".
+- Java never truly went for "everything is a unique object".
+
+Other observations:
+- Computers like to copy small data and to reference big data.
+- C did okay with just 1 reference kind (pointer).
+- Go shipped with 6 reference kinds.
+- Swift shipped with around 3 reference kinds.
+
+Use cases:
+- Dumb pointers.
+- Smart pointers.
+- Resizable data structures.
+- Procs / funcs.
+- Concurrency primitives.
+- Other forms of shared memory.
+
+Non-negotiables:
+- Automatic memory management.
+- Nil safety.
+
+Swift may be a nice role model here. Reference types are non-nil,
+and nilness is an explicit type-level opt-in with visible checks.
+Additionally, immutable structures have built-in copy on write.
+
+For reference types which are inherently nilable, e.g. pointers,
+we can treat all-zero as nil, but make this opt-in, unlike Go.
+
+### Distinct types
+
+Make it possible to declare a distinct type of any other type.
+
+The new type inherits the memory layout of the old type.
+The two are not _implicitly_ convertible to each other.
+
+This warrants a comparison with Go, where a distinct type always inherits all
+language-level built-in operations, and is explicitly convertible to the base
+type, but does not inherit any methods. This works out quite well in practice
+and is very useful.
+
+Our aims are different:
+- Keep "built-ins" out of compiler core.
+- Define most types and procs in stdlib.
+- No "operators", just procs.
+- No "methods", just procs.
+
+So the natural solution is that distinct types inherit everything, but require
+explicit conversion. Distinctness is the only difference.
+
+We could also consider supporting a form of selective distinctness where only
+specific behaviors are inherited, but only after looking at use cases.
+
+### Conversions
+
+Basic no-brainers:
+- Only safe conversions by default.
+- Pointers are distinct from numbers.
+- Distinct types require explicit conversion.
+- Allow implicit widening conversions where safe.
+- Avoid overflow/underflow by default. (Numeric conversions can fail.)
+
+Basic aims:
+- Make safe cheap conversions implicit.
+- Make expensive conversions explicit.
+- Prefer compile-time computations in release builds.
+
+We want to make it possible to define custom library-level comtime conversions
+between arbitrary types. The use cases are endless:
+- Implicitly converting numeric literals / constants to "built-in" numeric
+  types. Most languages build this into compiler core; we'd like to keep
+  this in library code.
+- Implicitly converting integers to "big ints" and floats to "big floats".
+  Sub-case of implicit widening conversions. Constant values should be
+  converted at comtime in release builds, dynamic values at runtime.
+- Implicitly converting strings to URLs. Constant values should be parsed
+  at comtime in release builds.
+- Implicitly converting strings to file path constructs. Constant values should
+  be parsed at comtime in release builds.
+- Parsing embedded SQL at comtime in release builds.
+- Implicitly converting `String -> Rune`, which saves on syntax.
+- Implicitly converting constant lists to sets at comtime.
+
+### Implicit vs explicit typing
+
+We're targeting two extremes and everything in-between. Extremes:
+- Entirely duck-typed code relying on static type inference. Good for scripting
+  and high-level business lotic. Can lead to obtuse type errors when overused.
+- Entirely explicitly-typed code. Should be used in libraries and utility code.
+  More verbose, but provides more guarantees and makes type errors nicer.
+
+The default is extreme type inference (see Haskell), suitable for scripting
+and high level code.
+
+For library code and large complicated projects, where duck typing can be too
+error prone or the errors become too obtuse, it should be possible to enforce
+explicit-only typing at the package level, via its config file:
+
+  {
+    name   `enterprise_monorepo`
+    typing `explicit`
+  }
+
+### Generics and traits
+
+In this context, "generic" means "type-parametrized".
+We'll use the former for brevity.
+
+Figuring out a generic type system for a new language takes years, even with
+many role models to yoink from. For now, we only list basic aims:
+- Support generic procs.
+- Support generic types.
+- Support traits (interfaces).
+- Prioritize static dispatch.
+- Boxed / dynamic traits are an explicit opt-in at callsites,
+  but not in proc declarations.
+- Support "duck-typed" generic code.
+- Support fully explicit generic code.
+
+Start by investigating existing implementations. Interesting examples include
+Nim, Swift, Go, and Zig amond others.
+
+Go launched without type parametrization, relying entirely on dynamic dispatch
+for generic code. It implicitly converts concrete values to interface fat
+pointers, and implicitly moves / copies values to the heap when necessary.
+This easily leads to high GC overheads, and many years of research went into
+mitigating that. At the time of writing this doc, they're looking into
+rewriting the garbage collector to be friendlier to modern hardware.
+We aim to avoid GC in the first place, and our generics should be statically
+dispatched by default; boxed traits should be opt-in.
+
+Swift did something interesting with witness tables and type metadata,
+which avoids over-specialization, but comes with runtime overheads.
+This was followed by years of research into how to speed that up,
+and where to specialize instead.
+
+We can delay the implementation of boxed traits / interface objects. Many of
+their use cases are covered by enums, and the rest can be emulated.
+First-class support may be added later, with an explicit opt-in.
+
+We should ensure that generic procs and types written to expect a trait `T` can
+be used with both concrete and boxed / dynamic `T`. Regular generics shouldn't
+have to be specially modified for interface objects. This already works in Go:
+every interface has its own special concrete type which implements that same
+interface, so it works with generic funcs too.
+
+Our duck-typed generic code will probably be somewhat similar to Zig generics,
+Rust `macro_rules`, or Nim templates. Relevant read:
+- https://typesanitizer.com/blog/zig-generics.html
+
+However, it should also be possible to specify constraints explicitly,
+for better error messages and maintainability. It should also be possible
+to enforce explicit generic constraints at package level:
+
+  {
+    name            `enterprise_monorepo`
+    type_parameters `explicit`
+  }
+
+In explicit type parameter declarations, it would be nice to avoid having to
+specify types twice, which is sadly very common. Go example:
+
+  func someFunc[T fmt.Stringer](val T) string {
+    return val.String()
+  }
+
+Simply taking a trait / interface should be equivalent to specifying that
+you take any concrete type conforming to that trait. The compiler should
+be able to specialize this proc:
+
+  fn.{
+    X fmt.Stringer
+    Z X.string
+  }
+
+When the underlying concrete type is needed,
+there should be a simple way to retrieve it:
+
+  fn.{
+    X fmt.Stringer
+    Z log.[`underlying type: ` X.underlying_type]
+  }
+
+Additional note. Over-specialization of generic code can bloat compilation
+time and executable size. Slim binaries are not on our priority list, but
+compilation times are, so this may require care.
+
+### Classes and subclasses
+
+Our real-world needs for generic code and polymorphism should be well-covered
+by a combination of: static type parametrization for procs and types; traits;
+enums; typedef inheritance (see [#distinct_types]); proc overloads.
+
+Long-lived object-oriented languages sometimes acquire all of these concepts.
+Ironically, this obviates object orientation in the first place, by replacing
+it with a collection of orthogonal concepts which compose better.
+
+Have you ever noticed how subtype polymorphism is redundant with interfaces?
+Interfaces are the extracted essence of OO polymorphism without the need for
+subtyping.
+
+Interop with C++ should not require any "classes" as the C ABI tends to be
+considered the lingua franca, and major C++ libraries provide C interfaces.
+
+Interop with JS and DOM requires support for emitting code with classes and
+methods. One notable example is the custom DOM element API, which is useful
+for optimizing hybrid SSR/SPA webapps and/or making webapps easier to write.
+Custom elements must be subclasses of DOM element classes, and some of their
+behaviors are only available through lifecycle callbacks defined as methods.
+
+Medium priority later, lower priority at first. We aim for customizable codegen
+(whether machine or textual). This should be solvable on a case-by-case basis
+or in library code, while keeping classes out of the type system. Clean support
+should be possible to add later.
+;;
+
+;;
+### Custom logic in type implementations
+
+Since we aim to keep most of the language outside the compiler core, this
+requires the ability for library code to define types and operations on
+types imperatively, after reflecting on the inputs, making specialized
+optimizations for specific types, etc.. Most languages stuff all this
+into the compiler.
+
+One interesting example is tagged unions. They need space for the tag.
+Some compilers go to great lengths to avoid wasting space by reusing
+bits which are otherwise unused. Sometimes it can be found in padding.
+Sometimes even inside of the provided types.
+
+Suppose we're declaring an `Opt` of `Bool`. Conceptually, it's a union of
+`Nil` and `Bool`: `Nil | Bool`. Some languages would force an additional
+wrapper here (`Some Bool`), but that should be avoidable. Since the union
+has 2 variants, it needs 1 bit to represent which variant is active. The
+type `Bool` also uses only 1 bit for its state, but on modern computers,
+it takes a whole whopping byte (8 bits) since the hardware doesn't support
+addressing smaller chunks. The implementation of the hypothetical type kind
+`Union` would reflect on `Bool` and find out that it's an ordinal enum whose
+highest value doesn't use the whole chunk of memory it consumes. As a result,
+it would generate a union type which uses one of those "dead" bits for its
+tag, and consumes no extra memory. Presumably it would pick a low bit rather
+than a high bit, and declare its bit width in type metadata in the same way
+as it was declared for `Bool`. That would make it stackable several layers
+deep within the same byte with no extra logic.
+
+Again, this is done in many languages. But such power should not be kept locked
+inside chunky monolithic compilers, but rather in a modular fashion available
+to libraries.
+;;
+
+;;
+## Concurrency and IO
+
+Threads and synchronous IO will be supported in any case. However, highly
+concurrent programs, especially servers, want to use async IO, which allows
+for much higher network throughput and moderately higher FS throughput.
+
+The code should not require any changes between the two IO styles. In other
+words, trying to use the result of an IO operation should implicitly block
+the current routine, with an option to opt out of blocking and get a future
+instead. We do not want the problem of "function color".
+
+Let's say all IO operations, regardless of IO implementation, return futures.
+Every `Fut X` is also a `Ref X` which _implicitly_ dereferences to X wherever
+X is expected. See [#refs] for more. Code which doesn't need to use a future's
+value can simply pass that future to other code which does.
+
+Centering around async IO also plays nicely with the JS compilation target,
+where it's the default anyway.
+
+Async IO requires custom lightweight concurrency. The area is well-researched
+and other languages provide plenty of examples of implementation strategies.
+We'll aim for a balance between efficiency and debuggability (traces).
+
+Full stack traces must be available in dev / debug modes, regardless of how
+coroutines are implemented (i.e. "stackless"). Importantly, a trace should not
+break off where one coroutine launches another. A coroutine's trace should be
+conjoined to its ancestors. This is already implemented in major JS engines and
+is valuable in debugging. This must not impede performance in fully optimized
+release builds. There should be an option to compile with and without trace
+support, and with trace support, there should be an option to enable or disable
+them at runtime.
+
+The same should be true when using OS threads.
+Each child thread's trace should reference the parent's trace.
+;;
+
+;;
+## Stack traces
+
+Language should come with built-in support for capturing and displaying stack
+traces, enabled by default in dev / debug builds. Release builds should have
+an option to compile with or without trace support. The latter produces
+smaller and faster executables which also don't leak filesystem paths. When
+built with trace support, tracing should be togglable at runtime, and have
+as little runtime cost as possible. Also, filesystem paths in release builds
+should be relativized.
+
+Traces are mainly used for errors, but sometimes it's useful
+to simply capture and print a trace to see how we got there.
+
+Also, not all errors need traces. See below.
+;;
+
+;;
+## Errors
+
+Errors should be:
+- Informative.
+- Efficient.
+- Chainable.
+- Customizable.
+
+The language should have an `Error` interface / trait implementable by
+arbitrary types, and provide a variety of tools for making errors easy.
+
+Library code can usually get away with trace-free errors. Application code
+should have a very easy way, ideally transparent, to opt into traces. When
+tracing is enabled, calling a library proc and receiving an error should
+automatically capture a trace at that point, wrapping the error with a
+tracing-error type.
+
+Traces should not be redundant. It should be possible to inspect an error and
+detect whether it has a trace. This could be part of the `Error` trait, with
+a default nop implementation automatically inherited by concrete types.
+
+Error messages are separate from traces. We encourage informative error
+messages, ideally actionable upon by final users who see them.
+
+Errors should be stack-allocated wherever possible.
+
+Errors should include context, such as which inputs caused the failure, what
+was the path of a file which is not found, and so on. The preferred way is to
+define an error type as a struct, and implement the `Error` trait by writing
+a proc which formats its error message appropriately.
+
+Many error types have context but are also recoverable, which means their
+contents are often discarded. In such cases, the message will simply not be
+generated.
+
+The language should provide an easy way to chain errors and inspect error
+chains. When writing a custom error type, there should be an easy way to
+make it able to reference another error.
+
+A transcript of an error's trace should include traces
+of the ancestor errors which caused it, if any.
+
+### Exceptions
+
+To be usable for high-level business logic and scripting,
+the language supports exceptions and uses them by default.
+
+In proc signatures, it should be possible to declare exception types,
+but this is not required by default.
+
+### Strict mode
+
+It would also be ideal to provide an opt-out from exceptions. It should be
+possible to configure the language, at module level and at package level, to
+have guaranteed local control flow, where non-local flow does not exist. For
+now we'll call this "strict mode". It has the following effects:
+- Control flow is explicit and guaranteed.
+- Macros which secretly alter control flow cannot be called by strict code,
+  either directly or indirectly.
+- All procs in strict code must declare exception types. This may include
+  memory allocation errors, although that could be rather unfortunate.
+- Exceptions are auto-converted to error values.
+- Procs with undeclared exceptions can't be called.
+- All errors must be handled.
+
+The compiler should be able to check if a proc declares all possible exception
+types, by following its dependency tree, and enforce this for strict code.
+
+Strict code can safely call exception-based code, as long as all exception
+types are declared. When an exception reaches strict code, the language hands
+the exception to that code and stops unwinding the stack. This also allows
+libraries to be written in exception-based style while still being callable
+by strict code. To make it easier to write libraries, there should also be a
+midway mode between strict and loose, which requires exception declarations,
+but uses exceptions for control flow. It should be configurable at the
+package level and recommended by default for libraries.
+
+Ideally, the language would come with a code formatter tool, and such a tool
+could also modify code in semantically useful ways, spiritually similar to
+`goimports` (which formats _and_ fixes imports). Such a tool could insert
+exception declarations into proc signatures automatically. Formatters are
+easier to integrate into code editors than LSPs. If we eventually get an LSP,
+it will also provide this.
+
+The ability to declare multiple exception types requires language-level
+support for tagged unions, also known as sum types or variant types.
+
+A union of errors should be considered an `Error`. This is automatic if
+every union auto-implements every trait implemented by all member types.
+;;
+
+;;
+The language should provide convenient ways of annotating errors.
+For example (semi-pseudocode):
+;;
+get_person fn.{
+  X Person_id
+  Z Person
+  Z (
+    id = X
+
+    ;;
+    Automatically deferred. If an exception occurs and matches
+    `db.err_not_found`, the exception is annotated with this
+    additional message, which is prepended to the message of
+    the wrapped error.
+    ;;
+    Error.only.(db.err_not_found).detail.[`unable to find user ` id]
+
+    ;;
+    Since this is the last expression, its result is
+    implicitly returned from this proc.
+    ;;
+    db.conn.query.[`select * from persons where id = $1` id].as.(Person)
+  )
+}
+
+;;
+Setting exceptions and control flow aside, we may consider other forms of
+strictness. In the end, instead of one overarching strict mode, we'll probably
+end up with multiple compiler options which enable or disable those forms.
+Package configuration could look like:
+;;
+{
+  enforce_types         true
+  explicit_control_flow true
+}
+
+;;
+## Pragmas
+
+Long-lived langs always seem to attract a desire for compile-time pragmas /
+annotations / decorators. In interpreted languages such as JS or Python, this
+may be called "design-time" rather than "compile-time", but the use cases are
+the same.
+
+Use cases include:
+- Optional compiler hints for micro-optimization (C / C++).
+- Reconfiguring compiler behavior for the current file (Haskell, Nim).
+- Invoking compile-time procs which transform var / proc behavior,
+  without changing var / proc declaration syntax (Rust, Nim, Haskell).
+- Wrapping procs to add some prolog and/or epilog (like timing logging).
+- Complying with demands for explicit annotations (`@Override` in Java).
+
+Conceptually, Java's `public private final volatile synchronized` etc.
+are all "pragmas", just like `@Override`.
+
+A lot of languages start without general-purpose pragmas, but with a bunch of
+special-case keywords and other syntax for various features, such as private
+vs public. Languages accumulate features over time. New features often come
+with new syntax, progressively complicating the language.
+
+Some newer languages look at that, and ship with general-purpose syntax for
+pragmas, to keep from having to add new syntax for features which can be
+expressed with annotations. Notable examples include Nim, Rust, Haskell.
+
+Given that our language has no keywords, we need pragmas even for basic stuff
+like "public" or "mutable".
+
+### Declaration modifiers
+
+This is a subset of the pragma use case. We need the ability to specify
+additional metadata about variables / fields, proc parameters, etc.
+
+Examples include:
+- This symbol is public.
+- This variable / field is mutable.
+- This type is immutable once constructed.
+- This type can't be copied.
+- This parameter must be a constant.
+- This parameter must be a literal.
+
+### Solutions
+
+Since we have symbol overloading, pragmas could be simply `S -> Pragma` where
+the type `Pragma` is built in, and the compiler knows to look for it.
+
+In blocks, we could borrow Haskell's syntactic approach, using a hypothetical
+compile-time operator `::` which defines `S -> P`.
+
+In structs, a field pragma is simply a field overload with the `Pragma` type.
+If [#modules_are_structs], this also applies to module root.
+
+Since typing `Pragma` everywhere is tiring, we could alias it to `::`.
+;;
+
+;; Simplest case: one boolean modifier. Block scope. ;;
+Some_type :: pub
+Some_type = struct.{}
+
+;; Same but in struct / module scope. ;;
+Some_type ::.pub
+Some_type struct.{}
+
+;; Same as above, but using the type name instead of `::`. ;;
+Some_type Pragma.pub
+
+;; Simple case: list of boolean modifiers. Block scope. ;;
+some_proc :: [pub inline]
+some_proc = fn.(<some_code>)
+
+;; Same but in struct / module scope. ;;
+some_proc ::.[pub inline]
+some_proc fn.(<some_code>)
+
+;; More complex case: parametrized modifiers. ;;
+Some_type ::.[derive.Debug derive.Show json.camel]
+Some_type struct.{}
+
+;; Optional key-value approach for more complex cases. ;;
+Some_type ::.{
+  pub         true
+  json_fields json.camel
+  sql_fields  sql.snake
+}
+Some_type struct.{}
+
+;; It should be possible to reuse pragmas. ;;
+Model ::.{
+  pub         true
+  derive      [derive.Debug derive.Show]
+  json_fields json.camel
+  sql_fields  sql.snake
+}
+
+;; Splurge the `Model` pragma. ;;
+Person ::.{* Model}
+Person struct.{
+  id   Uuid
+  name string
+}
+
+;; Splurge the `Model` pragma. ;;
+Session ::.{* Model}
+Session struct.{
+  id        Uuid
+  person_id Uuid
+}
+
+;; Making a variable mutable. Seems awkward. ;;
+val :: mut
+val = 123
+
+;; The `=` operator could support the following instead: ;;
+(val Int mut) = 123
+
+;; Module-level and scope-level pragmas are anonymous: ;;
+_ ::.{
+  vis `package`             ;; Visible only in current package. ;;
+  pub [Some_type some_proc] ;; Declare exports in one place. ;;
+}
+
+;; Module-level mutable field. ;;
+INDENT ::.[pub mut synchronized]
+INDENT `  `
+
+;;
+In module and struct fields, we could choose to support complex LHS
+with inline pragmas:
+;;
+(INDENT String pub mut synchronized) `  `
+
+;;
+Maybe in structs and module root, the `::` pseudo-field could be used for
+struct-level and module-level pragmas by default. This puts `::` in scope as
+a value of the type `Pragma`, but should not interfere with the use of the
+regular `::` (alias for `Pragma`) in the same scope, because of proc overload
+resolution. Or simply because it's a special case in the compiler.
+;;
+
+;; Module-level pragma: ;;
+:: {
+  vis `package`
+  pub [Some_type some_proc]
+}
+
+;; Struct-level pragma: ;;
+Some_type struct.{
+  ::         pub ;; Type and fields are public. ;;
+  some_field Int
+}
+
+;;
+Offtopic; move to a [#types] section later.
+Structs should be able to "inherit" by splurging.
+This is similar to struct embedding in Go.
+;;
+Ided struct.{id Uuid}
+Named struct.{name String}
+Timed struct.{created_at Time updated_at Time}
+Person struct.{
+  *     Ided
+  *     Named
+  *     Timed
+  email String
+}
+
+;;
+(Offtopic continued.)
+Unlike in Go, splurged fields should be usable at the top level in literals:
+;;
+person Person.{
+  id   some_uuid
+  name `some_name`
+}
+
+;;
+## Math
+
+Many arithmetic operations have edge cases which require special handling.
+For those operations, the language should provide multiple procs with
+different behaviors. Examples below.
+
+Addition variants:
+- Silent overflow.
+- Overflow panics / returns an error (see [#exceptions] and [#strict_mode]).
+- Overflow caps, returning the maximum value.
+
+Similar for subtraction and multiplication.
+
+Division variants:
+- Division by zero returns 0. (Conveniently free on some architectures.)
+- Division by zero panics.
+
+Floating point operations:
+- IEEE 754 compliant variants.
+- Variants which panic on NaN or infinity.
+- Variants which truncate Infinity to the maximum representable value,
+  except for division by zero which panics. (Posits behave similarly.)
+
+NaN should probably be equal to NaN.
+
+Recent languages disagree on arithmetic. In Swift, overflow kills your entire
+program and cannot be caught 🤯😳. Swift also provides multiple variants of
+arithmetic operators, letting your opt into mathematically incorrect behaviors
+such as overflows. Meanwhile, in Go, integers overflow by default, requiring
+tricky extra library code with complicated test coverage just to get numeric
+conversions which aren't mathematically insane, while at the same time, float
+to integer conversions are best-effort and capping. Given the disagreements and
+inconsistencies, there seems to be no default that satisfies every use case.
+We aim to provide options and make the choices easy to enforce.
+
+Overflow-capping produces mathematically "incorrect" results, yet is very common
+in game logic, where it's often the correct way of doing arithmetic. A currency
+counter or status effect counter should cap instead of overflowing, which does
+happen a lot. This shows that "correctness" in arithmetic is multi-faceted.
+
+In actual application code, we want to make it easy to use the semantically
+correct arithmetic without having to remember to insert extra bounds checks
+or which operators to choose. Making this configurable at the package level
+is possible, but realistically, many packages will want to assign different
+arithmetic behaviors to different variables / fields, in a controllable yet
+mix-and-match way. Doing this at the type level seems like the most natural
+centerpiece. We provide several variants of each numeric type, differing in
+how they handle arithmetic operators.
+;;
+
+;;
+## SIMD
+
+It would be nice to provide SIMD-compatible "vector" numeric types, such as
+Uint128 and Uint256, and emit SIMD instructions for operations on them, on
+supported architectures, with regular arithmetic as a fallback.
+;;
+
+;;
+## Fast iteration
+
+One of the aims of this project is to eliminate waiting-for-compilation
+for arbitrarily large codebases, up to a point anyway.
+
+Large codebases are full of features, but rarely all the features are used or
+tested at once. In development, you typically work on one feature at a time
+and want to test changes immediately, without a long compilation step.
+
+A large codebase written in a compiled language doesn't have to feel like a
+sluggish, chunky monster. It should be possible to make a compiled-language
+codebase feel as nimble as a modular, mostly lazily-imported scripting
+language with HMR which respects developer time.
+
+This should be achievable through the following features:
+- JIT compilation in development.
+- Lazy code loading in development.
+- Native watch mode in development (small deal compared to other two).
+- Statically linked AOT in production for the exact same code.
+
+### Native JIT
+
+Tiered JITs were invented decades ago; see the Self language. The most
+prominent current example is JS. Compiled languages should learn from
+browser JS engines, which prioritize good balance between low latency
+and high throughput by using tiered JITs. This balance also happens
+to be perfect for developer workflows. We need a language which combines
+JIT compilation with AOT compilation and makes it transparent to switch
+between the two.
+
+Side note: the Swift REPL seems to use JIT compilation, but the language
+sadly does not provide a full-featured option to use JIT when developing
+actual apps. Such a miss, especially on MacOS where this is sorely needed.
+
+Another note in favor of hybrid AOT + JIT compilation. At the time of writing,
+MacOS runs security checks on every new executable. On large binaries this
+can take _seconds_, wasting huge amounts of developer time and slowing down
+iteration. This is particularly time-wasting for languages which statically
+link by default, such as Go, generating larger executables. This can only be
+disabled system-wide, hugely weakening system security. A compiled language
+with JIT support would skip this time-waster by running generated code in its
+own process, instead of writing an executable to disk and invoking it, which
+is currently the default in compiled languages.
+
+### Lazy code loading and analysis
+
+Lazy loading means importing only the modules which are _actually_ currently
+needed. We could take two approaches to this: explicit and implicit.
+
+The explicit approach can be seen in Python and JS, where imports can be moved
+from module root to inside of functions and executed on demand. This is often
+used in web applications in combination with routing; the net result is that
+when an application grows in size by adding new routes, development restart
+times stay nearly constant. Similarly, when adding a large new dependency
+which is only used occasionally, importing it lazily avoids affecting the
+common case of when it's unused, both in development and in production.
+
+The implicit approach is to automatically convert module-level imports into
+local imports, at the language level. This involves adding runtime checks
+such as "is this module imported"; it should be possible to keep them nearly
+negligible. When building an executable in release mode, we transparently
+switch to eager imports and skip this altogether.
+
+Naturally, this can be done with dylibs, which have been around for decades.
+But in prior compiled languages, making a codebase modular by splitting it
+into multiple dylibs takes extra work. This needs to be a built-in feature
+which reduces development latency at zero extra work from developers.
+
+Another neat trick used by JS engines is to avoid analyzing code which has
+not been called, even in modules which are actually loaded. Statically typed
+languages would see this as anathema: what do you mean, _don't_ analyze the
+code? But unused code is unused; this lets us run _used_ code sooner. The
+compiler could do both: prioritize JIT compilation and execution of actually
+used code, then use spare resources to finish analysis in the background.
+
+Ignoring unused definitions is not just for development speed. The compiler
+should also do this in release builds. It's sadly very common to import a
+huge library, like an SDK for some cloud API provider, only to use a tiny
+portion of it. The compiler should avoid analyzing unused stuff and
+tree-shake it out of the app. This should make compilation faster and
+resulting executables smaller.
+
+This "lax mode" also extends to "errors" in used code which don't actually
+affect execution, such as unused variables, unused imports, unused expression
+results. They should be ignored in development.
+
+Sidenote: modules are files, not directories. In languages where directories
+are modules, such as Go, it's far too easy to accidentally end up with a
+bloated "main" module which takes forever to compile and is impractical to
+split up at that point. Files have the right level of modularity and
+naturally lend themselves to caching and lazy loading.
+
+### Native watch mode
+
+Having a native watch mode allows the compiler to keep context in RAM and
+avoid repeatedly reading, parsing, analyzing code, speeding up iteration.
+
+This also potentially opens the door to HMS: hot module swapping, typically
+called HMR these days (hot module reload). At the time of writing, HMS has
+been available in Erlang for almost 40 years, yet still no major compiled
+language ships with HMS support.
+
+### Hot module swapping
+
+In prior compiled languages, HMS is sometimes implemented with dylibs.
+
+At the time of writing, Unreal Engine 5 has 2 different implementations of
+HMS. But this doesn't ship with C++; only UE users get that experience,
+which has plenty of caveats anyway.
+
+Nim 2 ships with its own HCR, implemented in ≈666 lines of code with comments.
+It also uses dylibs. It has limitations such as being unable to reload the
+main module of the program. The compiler doesn't ship with any kind of watch
+mode, which is needed for full HMS.
+
+Compiled languages should ship with full support for HMS.
+This feature should not be limited to specific frameworks.
+
+### Plugins and mods
+
+Native support for JIT + dynamic code loading + watch + HMS should enable
+something extremely useful: plugins and mods, implementable in the native
+language of the given application (not an embedded scripting language),
+distributable as source code (not as architecture-specific dylibs),
+updatable at application runtime, runnable and swappable in a production
+app by both plugin/mod authors and users.
+
+The desire for plugins and mods is pervasive. Media software, games, code
+editors, web frameworks and content management systems, complex web platforms
+such as Wikipedia, compilers and package managers, and more.
+
+In interpreted languages, loading code is trivial, but compiled languages
+force either an embedded VM for a scripting language, or using dylibs for
+plugins. Both have _major_ issues.
+
+Embedding a scripting language splits developer brains, often adds the costs
+of encoding and decoding between different binary representations of data,
+prevents proper AOT compilation to machine code, and makes plugins and mods
+significantly slower than they should be. While some scripting languages can
+be AOT compiled to bytecode, this does not solve brain split, data encoding
+and decoding, and inferior performance of interpreted code. Note that some
+target platforms, notably iOS, also forbid shipping a JIT compiler with apps.
+Which means that embedded scripts must either stay forever interpreted and
+thus slow, or be properly AOT compilable to machine code (not VM bytecode),
+which is not supported by any embeddable VM the author knows of.
+
+Using dylibs means that plugins have to be distributed as precompiled binary
+blobs which are specific to a platform and architecture. This is even worse
+than an embedded scripting language. Plugin authors have to compile blobs for
+each platform and architecture supported by the app, and end users have to be
+software reverse engineering experts to find out if the blob secretly steals
+their SSH keys and so on. Which leads to the next point.
+
+Being able to load arbitrary plugin source code, rather than dylibs, is great
+for audit and security, but nowhere near enough. Nobody has the full combo of
+time, inclination, and competence to validate the source code of every single
+program they download before running it.
+
+Which leads us to sandboxing, which should have at least two levels:
+process-level and plugin-level.
+
+We can't fully sandbox external code at the level of the standard library,
+because it can arrange for arbitrary syscalls on its own.
+
+Some operating systems support somewhat fine-grained sandboxing of process
+level IO. An attempt to access an un-pledged resource either causes an error
+or terminates the app outright. At the time of writing, this is available in
+OpenBSD more easily, in Linux less easily, and sadly missing from other
+operating systems. See https://justine.lol/pledge/.
+
+Ideally, an app should be able to fine-tune its IO constraints for mods and
+plugins without needing special OS support. At the time of writing, WASM and
+WASI comes to mind, as a balance of speed and security. WASM is a sandbox by
+design. Syscalls are not available, and by extension, neither is IO. This of
+course is full of tradeoffs which impede performance.
+
+Conclusion so far. An ability to load arbitrary _application-native_ code at
+runtime, with JIT compilation, seems hugely desirable for its combination of
+usability, performance, and auditability. We also want to be able to sandbox
+external code's IO without a significant performance hit.
+;;
+
+;;
+## Memory management
+
+To keep developers productive, memory management must be automatic.
+
+Because of soft-realtime use cases, such as games, memory management
+must be deterministic.
+
+We'll probably use an approach similar to Nim, with ownership tracking,
+simple automatic alloc/free for single-owned values, and reference counting
+for shared values. This is only done for reference types and avoided for value
+types. Reference counting also needs cycle detection; we could borrow ideas
+from Nim's ORC. Relevant reading:
+- https://nim-lang.org/blog/2020/10/15/introduction-to-arc-orc-in-nim.html
+
+We could also borrow ideas from Mojo. Instead of reference counting shared
+values by default, it assigns a single owner to each reference, does allow
+sharing the reference with other code, and ensures that the owner outlives
+the borrowers. This gets you the equivalent of reference counting without
+the actual counting when owners and lifetimes are clear. It also provides
+`ArcPointer` for when they're unclear. Relevant reading:
+- https://docs.modular.com/mojo/manual/values/
+- https://docs.modular.com/mojo/manual/values/ownership
+- https://docs.modular.com/mojo/manual/lifecycle/death/
+
+When compiling for the JS target, we simply leave this to the GC.
+
+A lofty goal for later it to support pluggable allocators. This is relevant
+for some performance-sensitive programs, such as games. We should keep an
+eye on our APIs to keep them compatible with this.
+;;
+
+;;
+## Destructors
+
+We should support destructors. In the native target,
+they should be deterministic.
+
+In the native target, destruction is done either inline when owner lifetime
+is clear, or via ARC which invokes a destructor at zero.
+
+In the JS target, because we don't use reference counting, we would like to
+use `FinalizationRegistry`. It's non-deterministic and often massively
+delayed, but for many use cases that involve destructors which aren't about
+memory, this doesn't bother us. We could also resort to ARC for references
+with custom destructors, and avoid it for regular references, which is most
+of them.
+
+When using `FinalizationRegistry`, destructors can't receive the reference as
+an input; the API tries to prevent programmers from accidentally retaining the
+value. So if we take this route, our destructors have to be about fields.
+Instead of writing a destructor like a method, which takes an entire struct,
+it would be written for a specific field of that struct. Seems fiddly, and
+perhaps we should just use reference counting in those edge cases involving
+multiple-ownership.
+;;
+
+;;
+## Libraries
+
+At first, the language should draconically forbid packages from importing
+other packages. Only applications can import packages.
+
+Reasons:
+- Encourages contributing to the standard library.
+- Minimizes unnecessary dependencies.
+- Minimizes redundant dependencies.
+- Minimizes library tree bloat.
+- A little copying is better than a little dependency.
+
+Eventually the restriction may be relaxed. But maybe not.
+
+Recent languages and package managers tend to use semantic versioning for
+packages. Dependency versions are often pinned. Any popular library that
+receives a lot of attention will frequently release new versions, and many
+other libraries will depend on different versions of it. Then the tree
+converges in some application which ends up importing like a bazillion
+redundant copies of that library, some of which would actually be compatible.
+This bloats executables and compilation times.
+
+Instead, we encourage contributions to the standard library.
+Apps will have an easier time and less bloat.
+
+If we relax this in the future, we will allow only 1 major version of any
+given package in a dependency tree, choosing the highest one. Different
+major versions would be unfortunate, but allowed. Packages are encouraged
+to increment the major version ONLY for breaking changes. Major new features
+without breaking changes are not an excuse for a major version increment.
+
+All this said, libs should be allowed to depend on other libs for testing.
+Execution-time deps, compile-time deps, testing-time deps, are separate.
+Libs should be free to use arbitrary testing-time deps, and apps should be
+free to _not_ download or run any of that.
+;;
+
+;;
+## Language versioning
+
+The language should aim for maximum backward compatibility.
+Code that builds and runs now, should build and run forever.
+
+Every package declares its preferred language version in its config.
+The language tooling adds this to the config automatically if missing.
+
+Breaking changes in the language and standard library should be minimized as
+much as possible. But when a certain breaking change is unavoidable or highly
+desirable, it should apply only to packages which declare that version of the
+language (or higher) as their preferred version. The old behavior should be
+kept in the compiler and applied to all packages whose preferred language
+version is lower.
+;;

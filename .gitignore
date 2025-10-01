@@ -1,12 +1,19 @@
 /*
+!/readme.md
 !/archive
 /archive/*
 !/archive/ast
 !/archive/examples
 !/archive/sublime
 !/archive/*.md
-!/examples
+!/drafts
 !/sublime
-!/*rc
-!/*ignore
-!/readme.md
+
+# Almost last to ban `.DS_Store` etc.
+.*
+
+# Unban non-junk dotfiles.
+!.git*
+!*ignore
+!*rc
+!*config

@@ -1,0 +1,78 @@
+;;
+This file tracks various minor ambiguities spotted in the lang drafts,
+and possible solutions.
+;;
+
+;;
+## Operator declarations
+
+To implement operators, you have to actually declare them. We have two ways of
+declaring stuff: with a struct field (note that modules are structs), and with
+procedural assignment.
+
+Operator-looking symbols without a dot on either side are always treated as
+binary infix and combined with the expressions on both sides. This takes
+priority over being in field name position, and over being in the LHS of
+a declaration operator.
+
+The ambiguity arises because we refuse to use separator characters
+such as commas, we're newline-insensitive, and the only precedence
+rule for binary infix is left associativity.
+
+The provisional solution is to allow strings instead of symbols in all
+declaration positions. It's been demonstrated to be acceptable in JS,
+where names of class fields and methods can be declared with strings.
+Syntax highlighters support those declarations just fine. However,
+this raises the issue of how to access such fields later on. Operator
+fields are accessed with symbols as usual, but what if someone wants
+to use a field named `my awesome field` (with spaces)? For now, the
+field would be inaccessible.
+
+We don't consider this a gotcha because syntax highlighting makes this
+obvious, as long as it's correctly implemented. Compiler can give clear
+errors too.
+;;
+
+;; Not what it looks like. ;;
+Person struct.{
+  Id    Uuid
+  *     Named
+  *     Timed
+  email String
+}
+
+;; This is what actually happens. ;;
+Person struct.{
+  Id    Uuid * Named * Timed
+  email String
+}
+
+;; Workaround. ;;
+Person struct.{
+  Id    Uuid
+  `*`   Named
+  `*`   Timed
+  email String
+}
+
+;; Not what it looks like. ;;
+some_preceding_expression
++ = fn.(asm.i32_add.[X Y])
+
+;; Becomes this and doesn't compile. ;;
+some_preceding_expression + = fn.(asm.i32_add.[X Y])
+
+;; Provisional solution. ;;
+`+` = fn.(asm.i32_add.[X Y])
+
+;;
+## Groups vs tuples
+
+Some parts of the draft accidentally assume the existence of tuple types which
+would be instantiated with () in places where a tuple type is inferred. This
+can be ambiguous with using () for grouping.
+
+Since we encourage structs to keep APIs extensible, we'll probably just avoid
+tuples in the type system, like Go did. They should however be implementable
+in library code, for cases where tuples are best.
+;;

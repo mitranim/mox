@@ -1,0 +1,170 @@
+%YAML 1.2
+---
+version: 2
+extends: Packages/mox/mox_base.sublime-syntax
+scope: source.mox
+file_extensions: [mox]
+
+# TODO:
+# - Struct fields should have `variable.other.member.declaration.mox` in struct
+#   declarations and regular `variable.other.member.mox` in dict literals.
+# - Support destructuring in declarations.
+# - In declarations, differentiate kinds: type / function / value.
+#   - Needed for indexing types and functions declared in nested scopes.
+# - In calls like `symbol.123`, scope numbers numerically, not symbolically.
+# - Support strings-as-symbols in declaration positions.
+# - In structs, disallow operator-looking symbols in key positions,
+#   including the first position.
+# - Put `meta.type` scopes into type literals.
+# - Consider always scoping `X Y Z` variables as parameters.
+
+variables:
+  line_start: '^[\t ]*'
+
+contexts:
+  main:
+    - match: (?=\S)
+      push: [expr-pop, root-decl-pop]
+
+  # The only reason root-level scoping looks complicated is because it needs to
+  # support both types of root scopes: "modules are structs" and "modules are
+  # blocks". That's because we haven't settled on one, and our various examples
+  # use both interchangeably in the same files. If we manage to settle on one,
+  # this can be eliminated.
+  #
+  # SYNC[declarations].
+  root-decl-pop:
+    # `_` is special-cased to be blank in any context.
+    - match: '{{line_start}}{{sym_break_begin}}(_){{sym_break_end}}'
+      captures:
+        1: variable.language.blank.mox
+      pop: 1
+
+    # `one = two` declarations in root scope need to be scoped
+    # before other infix operations, see below.
+    - match: '{{line_start}}({{sym_unqual}})(?=\s*={{sym_break_end}})'
+      captures:
+        1: entity.name.mox
+      pop: 1
+
+    # An immediate call in root scope means that the code we're highlighting is
+    # not actually meant for module root, it represents code which is meant to
+    # run in procedural block scope.
+    #
+    # Immediate calls have the shapes:
+    #
+    #   one + two
+    #   one.two
+    #   one .two
+    #   one .two. three
+    #
+    # However, the following is a valid declaration in root / struct scope:
+    #
+    #   one +.two
+    - match: '{{line_start}}({{sym_unqual}})(?=\s*(?:{{dot}}|{{oper_unqual}}))'
+      captures:
+        1: variable.other.mox
+      pop: 1
+
+    # This is meant for struct fields in root scope, like:
+    #
+    #   some_name some_expression_assigned_to_name
+    - match: '{{line_start}}({{sym_unqual}})(?=\s+\S)'
+      captures:
+        1: entity.name.mox
+      pop: 1
+
+    - match: (?=\S)
+      pop: 1
+
+  # SYNC[declarations].
+  sym-assign-pop:
+    - match: '(_)\s+(=)(?=\s|$)'
+      captures:
+        1: variable.language.blank.mox
+        2: keyword.operator.assignment.mox
+      set: expr-pop
+    - match: '({{sym}})\s+(=)(?=\s|$)'
+      captures:
+        1: variable.declaration.mox
+        2: keyword.operator.assignment.mox
+      set: expr-pop
+
+  expr-pop:
+    - match: ''
+      set: [expr-postfix-join, expr-base-pop]
+
+  expr-postfix-join:
+    - match: (?={{dot}})
+      set: expr-pop
+
+    # An unqualified operator is binary.
+    - match: '{{oper_unqual}}'
+      scope: keyword.operator.mox
+      set: expr-pop
+
+    - match: (?=\S)
+      pop: 1
+
+  sym-pop:
+    - meta_prepend: true
+    - include: sym-dot-end-match
+    - include: sym-const-pop
+    - include: sym-assign-pop
+    - include: sym-call-prefix-pop
+    - include: sym-call-suffix-pop
+    - include: sym-dot-match
+
+  sym-dot-end-match:
+    - match: '{{sym_segment}}(?={{dot}}{{sym_segment}})'
+      scope: variable.other.mox
+    - match: '{{sym_segment}}(?={{dot}})'
+      scope: variable.function.mox
+
+  sym-const-pop:
+    - match: '{{sym_break_begin}}(?:true|false|nil){{sym_segment_break_end}}'
+      scope: constant.language.mox
+      pop: 1
+
+  sym-call-suffix-pop:
+    - match: ({{dot}})({{sym_segment}})
+      captures:
+        1: punctuation.accessor.mox
+        2: variable.function.mox
+      set: req-delim-pop
+
+  sym-dot-match:
+    - match: '{{dot}}'
+      scope: punctuation.accessor.mox
+
+  brace-pop:
+    - match: \}
+      scope: punctuation.section.braces.end.mox invalid.illegal.mox
+      pop: false
+    - match: \{
+      scope: punctuation.section.braces.begin.mox
+      set: [brace-meta, brace-key-pop]
+
+  brace-meta:
+    - meta_scope: meta.braces.mox
+    - include: now-pop
+
+  brace-key-pop:
+    - include: brace-end-pop
+    - match: '{{sym}}'
+      scope: variable.other.member.declaration.mox
+      set: brace-val-pop
+    - match: (?=\S)
+      set: [brace-val-pop, brace-expr-pop2]
+
+  brace-val-pop:
+    - include: brace-end-pop
+    - match: (?=\S)
+      set: [brace-key-pop, expr-pop]
+
+  brace-expr-pop2:
+    - match: \}
+      scope: punctuation.section.braces.end.mox
+      pop: 2
+    - match: (?=\S)
+      set: expr-pop

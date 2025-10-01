@@ -1,0 +1,453 @@
+;;
+Loose translation of a syntax highlighter SQL grammar for Sublime Text
+originally written in SBNF (Sublime Backus–Naur Form):
+
+  https://github.com/mitranim/sublime-sql/blob/main/pgsql.sbnf
+
+This shows how easily our notation and call syntax lend themselves to
+representing something as specialized as SBNF.
+
+With the appropriate library support (the right operators defined and put in
+scope), the code should run as-is, producing a grammar data structure, which
+would need to be "intepreted" by the SBNF engine.
+
+Translation notes:
+- SBNF's `pattern{scope}` becomes `pattern @ "scope"`.
+- SBNF's `rule[arg]` becomes:
+  - A proc definition `rule fn.(<code>)`
+  - A proc call `rule.<arg>`.
+- In some places, chained infix `|` was converted to
+  equivalent variadic `or` for nicer alignment.
+- No thought was given to how `~` should be used.
+
+Importing the hypothetical library puts several specialized procs in scope:
+- Implicit conversion `String -> Rule`
+- Implicit conversion `String -> Scopes`
+- `+`  as `Rule Rule -> Rule`
+- `|`  as `Rule Rule -> Rule`
+- `@`  as `Rule Scopes -> Rule`
+- `or` as `[Rule] -> Rule`
+- `?`  as `Rule -> Rule`
+- `*`  as `Rule -> Rule`
+- `~`  as `Rule -> Rule`
+
+Usage of `@` accidentally mirrors a similar feature in Tree-Sitter queries;
+this was entirely coincidental.
+
+Just having this in scope allows to express the grammar
+with regular built-in data literals, without any macros.
+
+Since the grammar is just a struct, the hypothetical library machinery would
+need just a tiny bit of compile-time reflection on its auto-constructed type,
+to find the field names/offsets/types for runtime access.
+;;
+
+sbnf import.`sbnf`
+
+grammar hypothetical_sbnf_transform.{
+  SCOPE       `source.pgsql`
+  main        any
+  prototype   comment
+  comment     comment-line | comment-block
+  any         punctuation | number | string | operator | identifier
+  number      number-float | number-int
+  punctuation dot | comma | semi | parens | brackets | braces
+  operator    operator-cast | operator-star | operator-tilde | operator-any
+  identifier  keyword | param | ident-other
+  keyword     bool | kw-common | kw-reserved
+  param       param-ordinal | param-named
+  atom        number | string | bool | kw-reserved | ident-other
+
+  ;;
+  Reference:
+  https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
+
+  Postgres currently does not allow the empty quoted identifier "", but for our
+  purposes it's better to scope it like an identifier.
+  ;;
+  IDENT_UNQUOTED `\b[[:alpha:]_][[:alnum:]_]*\b`
+  IDENT_QUOTED   `"[^"]*"`
+  IDENT_ANY      concat.[`(?:` IDENT_UNQUOTED `|` IDENT_QUOTED `)`]
+  OP_CHAR        "\*\/\<\>\=\~\!\@\#\%\^\&\|\`\?\+\-"
+  OP_BEGIN       `(?!<[` + OP_CHAR + `])`
+  OP_END         `(?=[^` + OP_CHAR + `]|$)`
+  OP_ANY         `[` + OP_CHAR + `]+`
+
+  comment-line [
+    -- @ `punctuation.definition.comment`
+    (~)
+    `\n`
+  ] @ `comment.line`
+
+  comment-block [
+    comment-block-begin
+    comment-block.~.*
+    comment-block-end.~
+  ] @ `comment.block`
+
+  comment-block-begin `/*` @ `punctuation.definition.comment.begin`
+  comment-block-end   `*/` @ `punctuation.definition.comment.end`
+
+  parens        [paren-begin   any.~.* paren-end]
+  brackets      [bracket-begin any.~.* bracket-end]
+  braces        [brace-begin   any.~.* brace-end]
+  dot           `.` @ `punctuation.accessor.dot`
+  comma         `,` @ `punctuation.separator.sequence`
+  semi          `;` @ `punctuation.terminator`
+  paren-begin   `(` @ `punctuation.section.parens.begin`
+  paren-end     `)` @ `punctuation.section.parens.end`
+  bracket-begin `[` @ `punctuation.section.brackets.begin`
+  bracket-end   `]` @ `punctuation.section.brackets.end`
+  brace-begin   `{` @ `punctuation.section.braces.begin`
+  brace-end     `}` @ `punctuation.section.braces.end`
+
+  ;; TODO support the `Ee` notation. ;;
+  number-float `\d+(\.)\d+` @ {0 `constant.numeric` 1 `punctuation.separator.decimal`}
+  number-int   `\d+` @ `constant.numeric`
+
+  ;;
+  https://www.postgresql.org/docs/current/sql-syntax-lexical.html
+
+  TODO: support dollar-quoted strings.
+  ;;
+  string string-single
+
+  ;; TODO: support escapes when `E`. ;;
+  ;; TODO: support bitstrings. ;;
+  string-single [
+    `(\b[Ee])?(')` @ {
+      1 `storage.modifier`
+      2 `punctuation.definition.string.begin`
+    }
+    `'`.~ @ `punctuation.definition.string.end`
+  ] @ {0 `string.single` include-prototype false}
+
+  op             fn.(OP_BEGIN + A + OP_END @ `keyword.operator`)
+  operator-cast  [op.`::` ident-storage-type.?]
+  operator-star  [ident-ns.? op.`*`]
+  operator-tilde op.`~*|~|!~*|!~` ;; TODO: followed by string scoped as regexp. ;;
+  operator-any   OP_ANY @ `keyword.operator`
+
+  param-ordinal `(\$)\d+` @ {
+    0 `variable.parameter.ordinal`
+    1 `punctuation.definition.variable`
+  }
+
+  param-named `(?!<:)(:)` + IDENT_UNQUOTED @ {
+    0 `variable.parameter.named`
+    1 `punctuation.definition.variable`
+  }
+
+  bool word.`true|false` @ `constant.language.bool`
+
+  ;;
+  https://www.postgresql.org/docs/current/sql-keywords-appendix.html
+  https://github.com/postgres/postgres/blob/master/src/include/parser/kwlist.h
+  ;;
+  kw-reserved
+    word.`all|analyse|analyze|and|any|array|as|asc|asymmetric|both|case|cast|check|collate|column|constraint|create|current_catalog|current_date|current_role|current_time|current_timestamp|current_user|default|deferrable|desc|distinct|do|else|end|except|false|fetch|for|foreign|from|grant|group|having|in|initially|intersect|into|lateral|leading|limit|localtime|localtimestamp|not|null|offset|on|only|or|order|placing|primary|references|returning|select|session_user|some|symmetric|table|then|to|trailing|true|union|unique|user|using|variadic|when|where|window|with`
+    @ `keyword.reserved`
+
+  ;; Non-reserved keywords which are common enough to be scoped non-contextually. ;;
+  kw-common or.[
+    kw-ddl
+    is
+    order
+    group
+    join
+    as-ident
+    ident-as
+    kw-common-misc
+  ]
+
+  kw-ddl or.[create alter drop]
+
+  kw-common-misc kw.`set|commit|rollback|between|full`
+
+  ;; https://www.postgresql.org/docs/current/sql-commands.html ;;
+  create create-or-replace.(or.[
+    create-table
+    create-trigger
+    create-function
+    create-index
+    create-view
+    create-schema
+    create-extension
+    create-type
+    create-domain
+    create-aggregate
+    ident-kw
+  ])
+
+  alter [
+    kw.alter
+    or.[alter-table alter-domain alter-type ident-kw]
+  ]
+
+  create-schema    [kw.schema    if-not-exists.? ident-decl-schema]
+  create-extension [kw.extension if-not-exists.?]
+  create-type      [kw.type      ident-decl-type (kw.as kw.enum.?).?]
+  create-domain    [kw.domain    ident-decl-type kw.as ident-storage-type constraint.?]
+  create-aggregate [kw.aggregate ident-decl-function fn-params.?]
+
+  ;; https://www.postgresql.org/docs/current/sql-createtable.html ;;
+  create-table [
+    kw.`global|local|temporary|temp|unlogged`.?
+    kw.table
+    if-not-exists.?
+    ident-decl-table
+    paren-begin
+    ;; Needs to be simplified. ;;
+    [
+      (constraint | declare-column)
+      ([comma.? constraint] | [comma declare-column]).*
+    ].?
+    paren-end
+  ]
+
+  ;;
+  Note: we're not scoping the procedure call as `variable.function` because the
+  latter isn't generally supported by this syntax yet. Supporting it only here
+  would be surprising.
+  ;;
+  create-trigger [
+    kw.`trigger` if-not-exists.? ident-decl-trigger
+    [
+      kw.`after|before|or|insert|update|delete`.*
+      kw.`on`
+      ident-other
+      kw.`for|each|row|statement|execute`.*
+      kw.`procedure`
+    ].?
+  ]
+
+  ;;
+  https://www.postgresql.org/docs/current/sql-createfunction.html
+
+  TODO support PLPGSQL in function body (auto-detect from initial `begin`).
+  ;;
+  create-function [
+    kw.`function`
+    if-not-exists.?
+    ident-decl-function
+    fn-params
+    fn-return.?
+    fn-meta.*
+    (kw.`as|return` | semi)
+  ]
+
+  create-index [kw.`unique`.? kw.`index` if-not-exists.? ident-decl-index]
+
+  ;; TODO: parameter list for `recursive view`. ;;
+  create-view [
+    kw.`temp|temporary`.?
+    kw.`materialized|recursive`.?
+    kw.`view`
+    ident-decl-view
+    view-params.?
+    view-opts.?
+    kw.`as`.?
+  ]
+
+  view-params [paren-begin (kw-reserved | ident-decl-param | comma).* paren-end]
+  view-opts   [kw.`with` paren-begin (view-opt | comma).* paren-end]
+  view-opt    [operator-any | atom]
+
+  alter-table [
+    kw.`table` if-exists.? kw.`only`.? ident-other alter-table-action
+  ] @ `meta.alter.table`
+
+  ;; Placeholder. ;;
+  alter-domain kw.`domain`
+
+  ;; Placeholder. ;;
+  alter-type kw.`type`
+
+  alter-table-action or.[
+    [kw.`add`    alter-table-action-add]
+    [kw.`drop`   alter-table-action-drop]
+    [kw.`alter`  alter-table-action-alter]
+    [kw.`rename` alter-table-action-rename]
+    kw.`inherit`
+  ]
+
+  alter-table-action-add or.[
+    [kw.`constraint` if-not-exists.? ident-decl-constraint [kw.`not` kw.`valid`].?]
+    [kw.`column`.? if-not-exists.? declare-column]
+  ]
+
+  alter-table-action-drop [
+    ident-kw if-exists.? ident-other kw.`restrict|cascade`.?
+  ]
+
+  alter-table-action-alter or.[
+    [kw.`constraint` ident-other [kw.`not`.? kw.`deferrable`].? [kw.`initially` kw.`deferred|immediate`].?]
+    [kw.`column`.? ident-other alter-table-action-alter-column]
+  ]
+
+  alter-table-action-rename or.[
+    [kw.`to`         ident-decl-table]
+    [kw.`constraint` ident-other kw.`to` ident-decl-constraint]
+    [kw.`column`.?   ident-other kw.`to` ident-decl-column]
+  ]
+
+  alter-table-action-alter-column or.[
+    [kw.`add`  alter-table-action-alter-column-add]
+    [kw.`set`  alter-table-action-alter-column-set]
+    [kw.`drop` alter-table-action-alter-column-drop]
+    type-using
+  ]
+
+  alter-table-action-alter-column-add [
+    kw.`generated` (kw.`always` | kw.`by`) kw.`default` kw.`as` kw.`identity`
+  ]
+
+  alter-table-action-alter-column-set or.[
+    [kw.`data` type-using]
+    kw.`default`
+    [kw.`not` kw.`null`]
+  ]
+
+  alter-table-action-alter-column-drop or.[
+    kw.`default`
+    [kw.`not` kw.`null`]
+    [kw.`expression` if-exists.?]
+  ]
+
+  as-ident
+    concat.[`\b((?i)as)\b\s*(` IDENT_ANY `)`]
+    @ {1 `keyword.reserved` 2 `variable.other.constant.declaration`}
+
+  ;; TODO this should be done ONLY in `with`. Need proper support. ;;
+  ident-as
+    concat.[`(` IDENT_ANY `\s*\b((?i)as)\b(?=\s*\(|\s+materialized\s*\()`]
+    @ {1 `variable.other.constant.declaration` 2 `keyword.reserved`}
+
+  type-using [kw.`type` ident-storage-type kw.`using`.?]
+
+  ;; TODO support various modifiers, defaults, etc. ;;
+  fn-params [paren-begin (kw-reserved | param-typed | comma)* paren-end]
+  param-typed [ident-decl-param.? ident-storage-type]
+
+  ;; TODO support `table`, `setof` and possibly more. ;;
+  fn-return [kw.`returns` or.[
+    kw.`trigger`
+    [kw.`setof` ident-storage-type]
+    [kw.`table` fn-params]
+    ident-storage-type
+  ]]
+
+  ;; https://www.postgresql.org/docs/current/sql-createfunction.html ;;
+  fn-meta or.[
+    kw.`window|immutable|stable|parallel|unsafe|restricted|safe|volatile|strict|external`
+    [kw.`language` ident-kw]
+    [kw.`transform` kw.`for` kw.`type` ident-storage-type ident-storage-type.*]
+    [kw.`not`.? kw.`leakproof`]
+    [kw.`security` kw.`invoker|definer`]
+    [kw.`cost` number]
+    [kw.`rows` number]
+    [kw.`support` ident-other]
+    [
+      kw.`set` ident-other
+      ([kw.`to` atom] | [operator-any atom] | [kw.`from` kw.`current`])
+    ]
+  ] @ `meta.function.meta`
+
+  ;; Placeholder. ;;
+  drop [kw.`drop` if-exists.?]
+
+  is [
+    kw.`is` kw.`not`.? (bool | kw.`null` | kw.`unknown` | [kw.`distinct` kw.`from`])
+  ]
+
+  order [kw.`order` kw.`by`]
+  group [kw.`group` kw.`by`]
+
+  ;; https://www.postgresql.org/docs/current/sql-select.html ;;
+  join or.[
+    [kw-pre.`cross` kw.`join`]
+    [kw-pre.`natural`.? join-type]
+  ]
+
+  ;; https://www.postgresql.org/docs/current/sql-select.html ;;
+  join-type or.[
+    [kw-pre.`inner`.? kw.`join`]
+    [kw-pre.`left|right|full` kw-pre.`outer`.? kw.`join`]
+  ]
+
+  constraint [kw.`constraint` ident-decl-constraint.?]
+
+  ;;
+  WTB better naming scheme for entity name rules.
+  TODO: support various contextual keywords after the type, such as `primary key`.
+  ;;
+  declare-column [ident-decl-column ident-storage-type]
+
+  create-or-replace [kw.`create` kw.`or` kw.`replace`] | kw.`create`
+  if-not-exists     [kw.`if` kw.`not` kw.`exists`]
+  if-exists         [kw.`if` kw.`exists`]
+
+  word fn.(concat.[`(?i)\b(?:` A `)\b`])
+
+  kw fn.(word.(A) @ `keyword`)
+
+  ;; Short for "word preceding another word". ;;
+  word-pre fn.(concat.[`(?i)\b(?:` A `)\b(?=\s+` IDENT_UNQUOTED `)`])
+
+  ;;
+  Short for "keyword preceding another keyword".
+
+  Should be used in compound keywords like "left join" to avoid accidental
+  scoping of words that may also occur in other expressions. For example,
+  "left" is also a string function.
+  ;;
+  kw-pre fn.(word-pre.(A) @ `keyword`)
+
+  id          fn.(ident @ A)
+  ident       IDENT_ANY
+  ident-kw    IDENT_UNQUOTED @ `keyword`
+  ident-other [ident-ns.? id.`variable.other`]
+
+  ident-ns ident-ns.`variable.other`
+  ident-ns fn.(
+    concat.[`(` IDENT_ANY `|(?:(\()\s*` IDENT_ANY `\s*(\))))\s*(\.)`]
+    @ {
+      1 A
+      2 punctuation.section.parens.begin
+      3 punctuation.section.parens.end
+      4 punctuation.accessor.dot
+    }
+  )
+
+  ;;
+  TODO better name.
+  TODO support types consisting of multiple words, parametrized types, etc.
+  ;;
+  ident-storage-type [ident-ns.? type [bracket-begin bracket-end].?]
+
+  type (type-char | ident) @ `storage.type`
+
+  ;;
+  Note: technically, the whitespace could include newlines and tabs, and our
+  regexps don't support that. TODO fix.
+  ;;
+  type-char [
+    word.`character\s+varying|varchar|character|char`
+    [paren-begin number-int paren-end].?
+  ]
+
+  ;;
+  Rules starting with "ident-decl-" must use "declaration" scopes, as opposed
+  to "usage" scopes. Most of these scopes should be added to symbol index.
+  ;;
+  ident-decl-param      [ident-ns.? id.`variable.parameter`]
+  ident-decl-column     [ident-ns.? id.`variable.other.member.declaration`]
+  ident-decl-constraint [ident-ns.? id.`entity.name.constraint`]
+  ident-decl-table      [ident-ns.? id.`entity.name.type.table`]
+  ident-decl-schema     [ident-ns.? id.`entity.name.schema`]
+  ident-decl-trigger    [ident-ns.? id.`entity.name.trigger`]
+  ident-decl-function   [ident-ns.? id.`entity.name.function`]
+  ident-decl-index      [ident-ns.? id.`entity.name.index`]
+  ident-decl-view       [ident-ns.? id.`entity.name.view`]
+  ident-decl-type       [ident-ns.? id.`entity.name.type`]
+}

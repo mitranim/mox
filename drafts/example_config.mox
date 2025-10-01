@@ -1,0 +1,67 @@
+{
+  pkg_name `some_package`
+  pkg_ver  `0.0.1`
+  lang_ver `0.1.0`
+  author   `Some Author`
+  license  `https://example.com/example_license`
+
+  deps [
+    {
+      name lib_0
+      repo `https://one.two/three.git`
+      tag  `0.1.0`
+    }
+    {
+      name lib_1
+      repo `https://one.two/four.git`
+      tag  `0.2.0`
+    }
+  ]
+}
+
+;;
+This uses a restricted subset of the language analogous to Clojure's EDN.
+
+Code and data use the same syntax and the same parser.
+But data is interpreted differently:
+- Calls / expressions are not supported. Every form is self-representing.
+- Symbols are self-representing, similarly to strings, with the exception
+  of `nil` `false` `true` which are treated specially.
+- Symbols can mix operator and identifier characters.
+- Symbols and are not split at `.`.
+- Keys in {} must be unique. Duplicate keys are invalid.
+- () is not used.
+
+It should also be possible to write configuration files as small scripts
+which export a config. This is important but not represented here.
+
+The parser and formatter should support and preserve comments.
+It needs to be possible to programmatically editing configs
+without breaking comments.
+
+The standard library should provide APIs for decoding, formatting, encoding.
+There be should two ways of decoding:
+- As default types.
+- Into a specific static type.
+
+When decoding as default types, every value is something like `DataNode`
+which is a union of all default types supported by the notation:
+- Nil
+- Bool
+- Int
+- Float
+- String
+- List
+- Dict (ordered)
+- Comment
+
+Ideally, this should also be configurable. For example, it should be possible to
+specify how to parse numbers, plug-in a bigint / bigfloat implementation, and
+override any other default type.
+
+Some use cases may also want to transcode from the default types to a
+specific structured type, so we have 3 ways of decoding:
+- text -> default types
+- text -> specific type
+- text -> default types -> specific type
+;;
