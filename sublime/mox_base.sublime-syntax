@@ -7,13 +7,11 @@ scope: source.mox
 # This base syntax is intented for sketches and experimentation. It supports
 # basics like comments, delimiters, numeric literals, and string literals,
 # without being overly specialized.
-#
-# TODO: invalid/illegal scoping for numbers immediately following a dot,
-# except in numeric literals.
 
 variables:
   comment_delim: ;
   comment_fence: '({{comment_delim}}{2,})(?!{{comment_delim}})'
+  md_heading: ((#+)\s*\S.*){{eol}}
 
   string_backtick_delim: '`'
   string_backtick_fence: '({{string_backtick_delim}}+)(?!{{string_backtick_delim}})'
@@ -28,28 +26,12 @@ variables:
   int_oct: '[0-7][0-7_]*'
   int_dec: '[0-9][0-9_]*'
   int_hex: '[0-9a-f][0-9a-f_]*'
-  md_heading: ((#+)\s*\S.*){{eol}}
+  sym_begin: (?<![{{sym_chars}}])(?![+-]?\d_?)
+  sym_end: (?![{{sym_chars}}])
+  sym_chars: '{{ident_chars}}{{oper_chars}}'
+  sym: '{{sym_begin}}[{{sym_chars}}]+{{sym_end}}'
   dot: \.
   eol: (?:\n|$)
-
-  # Almost any sequence of these characters is a symbol.
-  # However, anything that begins with `-?\d` must be
-  # a valid numeric literal.
-  sym_chars: '{{dot}}{{sym_segment_chars}}'
-  sym: '{{sym_break_begin}}[{{sym_chars}}]+{{sym_break_end}}'
-
-  sym_segment_chars: '{{ident_chars}}{{oper_chars}}'
-
-  sym_break_begin: (?<![{{sym_chars}}])(?!-?\d)
-  sym_break_end: (?![{{sym_chars}}])
-
-  sym_segment_break_begin: (?<![{{sym_segment_chars}}])
-  sym_segment_break_end: (?![{{sym_segment_chars}}])
-
-  sym_segment: '{{sym_segment_break_begin}}[{{sym_segment_chars}}]+{{sym_segment_break_end}}'
-  sym_unqual: '{{sym_break_begin}}[{{sym_segment_chars}}]+{{sym_break_end}}'
-  ident_unqual: '{{sym_break_begin}}[{{ident_chars}}]+{{sym_break_end}}'
-  oper_unqual: '{{sym_break_begin}}[{{oper_chars}}]+{{sym_break_end}}'
 
 contexts:
   # Misc common utils.
@@ -62,12 +44,6 @@ contexts:
     - match: (?=\S)
       pop: 1
 
-  req-delim-pop:
-    - match: '[^{{dot}}{{delim_chars}}]+'
-      scope: invalid.illegal.jisp
-      pop: 1
-    - include: now-pop
-
   # Actual syntax.
 
   prototype:
@@ -79,7 +55,7 @@ contexts:
   comment-block-match:
     - match: '{{comment_fence}}'
       scope: comment.block.mox punctuation.definition.comment.begin.mox
-      push: [req-delim-pop, comment-block-meta, comment-block-pop]
+      push: [comment-block-meta, comment-block-pop]
 
   comment-block-pop:
     - meta_include_prototype: false
@@ -191,12 +167,12 @@ contexts:
       captures:
         1: punctuation.definition.string.begin.mox
         2: punctuation.definition.string.end.mox
-      set: req-delim-pop
+      pop: 1
 
   str-backtick-fenced-pop:
     - match: '{{string_backtick_fence}}'
       scope: string.quoted.other.mox punctuation.definition.string.begin.mox
-      set: [req-delim-pop, str-backtick-meta, str-backtick-inner-pop]
+      set: [str-backtick-meta, str-backtick-inner-pop]
 
   # Backtick strings are "raw": no escape characters.
   # Double strings support escape characters.
@@ -222,12 +198,12 @@ contexts:
       captures:
         1: punctuation.definition.string.begin.mox
         2: punctuation.definition.string.end.mox
-      set: req-delim-pop
+      pop: 1
 
   str-double-fenced-pop:
     - match: '{{string_double_fence}}'
       scope: string.quoted.double.mox punctuation.definition.string.begin.mox
-      set: [req-delim-pop, str-double-meta, str-double-inner-pop]
+      set: [str-double-meta, str-double-inner-pop]
 
   str-double-inner-pop:
     - meta_include_prototype: false
@@ -251,48 +227,57 @@ contexts:
     - include: num-dec-pop
 
   num-bin-pop:
-    - match: (-)?(0b)(?:{{int_bin}}(?:(\.){{int_bin}})?)?
+    - match: ([+-])?(0b)(?:{{int_bin}}(?:(\.){{int_bin}})?)?
       scope: constant.numeric.binary.mox
       captures:
         1: keyword.operator.arithmetic.jisp
         2: punctuation.definition.numeric.binary.mox
         3: punctuation.separator.mox
-      set: req-delim-pop
+      set: num-delim-pop
 
   num-oct-pop:
-    - match: (-)?(0o)(?:{{int_oct}}(?:(\.){{int_oct}})?)?
+    - match: ([+-])?(0o)(?:{{int_oct}}(?:(\.){{int_oct}})?)?
       scope: constant.numeric.octal.mox
       captures:
         1: keyword.operator.arithmetic.jisp
         2: punctuation.definition.numeric.octal.mox
         3: punctuation.separator.mox
-      set: req-delim-pop
+      set: num-delim-pop
 
   num-hex-pop:
-    - match: (-)?(0h)(?:{{int_hex}}(?:(\.){{int_hex}})?)?
+    - match: ([+-])?(0h)(?:{{int_hex}}(?:(\.){{int_hex}})?)?
       scope: constant.numeric.hexadecimal.mox
       captures:
         1: keyword.operator.arithmetic.jisp
         2: punctuation.definition.numeric.hexadecimal.mox
         3: punctuation.separator.mox
-      set: req-delim-pop
+      set: num-delim-pop
 
   num-dec-pop:
-    - match: (-)?{{int_dec}}(?:(\.){{int_dec}})?
+    - match: ([+-])?{{int_dec}}(?:(\.){{int_dec}})?
       scope: constant.numeric.decimal.mox
       captures:
         1: keyword.operator.arithmetic.jisp
         2: punctuation.separator.mox
-      set: req-delim-pop
+      set: num-delim-pop
+
+  num-delim-pop:
+    - match: '[A-Za-z]+'
+      scope: invalid.illegal.mox
+      pop: 1
+    - match: ''
+      pop: 1
 
   sym-pop:
-    - match: '{{sym_segment_break_begin}}_{{sym_segment_break_end}}'
+    - match: '{{sym_begin}}_{{sym_end}}'
       scope: variable.language.blank.mox
       pop: 1
+    # Always scoping operator-looking symbols as operators is traditional
+    # in Sublime and can be neat for syntactic experiments.
     - match: '(?<![{{ident_chars}}])[{{oper_chars}}]+(?![{{ident_chars}}])'
       scope: keyword.operator.mox
       pop: 1
-    - match: '[{{sym_segment_chars}}]+'
+    - match: '{{sym}}'
       scope: variable.other.mox
       pop: 1
 

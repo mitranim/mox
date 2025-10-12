@@ -11,11 +11,11 @@ and because I think syntax is fundamentally broken in most languages
 
 But this is REALLY about fixing the execution model.
 
-The core idea is to have a language which doesn't force a split between AoT
+The core idea is to have a language which doesn't force a split between AOT
 compilation vs JIT execution, but does both and lets you freely mix and match,
 and MOVE the line between where and when you want particular code to run. In
 development you should be able to mostly use the JIT mode for faster iteration,
-in production you will AoT compile, and you should be able to simply import the
+in production you will AOT compile, and you should be able to simply import the
 compiler to load plugins and mods at app runtime, and JIT + link them against
 your program to run at native speed. Baffling that no major language does this
 natively. (Dylib hacks are neither native nor ergonomic.) This JIT focus should
@@ -26,9 +26,9 @@ modules should be able to plug into the compiler on the fly, modify behaviors
 like codegen, install new behaviors, instruct the compiler how to compile them,
 and so on.
 
-The JIT+AoT combo means you should be able to prototype very rapidly, then build
-up without having to rewrite in another language. To make this practical, we'll
-need powerful type inference.
+The JIT+AOT combo means you should be able to prototype very rapidly, then build
+up, without having to rewrite in another language for performance. To make this
+really practical, we'll need powerful type inference.
 
 ## Influences
 
@@ -77,18 +77,20 @@ We need one "final" language, which should:
 
 ## Syntax and AST
 
-The language is defined in terms of its data notation, similar to Clojure's EDN.
-It's described in more detail in `./data_notation.mox`. In short, it supports:
+The language is defined in terms of its data notation, which is similar
+to Clojure's EDN. It's described in more detail in `./data_notation.mox`.
+In short, it supports:
 - Comments
 - Numbers
 - Strings
 - Symbols
-- Lists: () [] {} (distinct types)
+- Structures: () [] {} (distinct types)
 
 Notable differences from Clojure's AST types:
 - No support for `:keyword` symbols.
-- No support for reader macros. (Probably won't need them.)
-- While {} is always eventually treated as a dict, it's initially
+- No support for reader macros. (Don't need them.)
+- Symbols are second-class and not intended for runtime use by apps.
+- While {} is always used for key-value mapping, it's initially
   parsed as a list, because we use duplicate keys for overloads.
 
 Delimiter purposes:
@@ -96,33 +98,27 @@ Delimiter purposes:
 - [] is for app-execution-time sequences.
 - {} is for dicts and structs.
 
-The AST is homoiconic: numbers are really numbers in the AST, strings are
-really strings, and so on. The parser is encouraged to preserve references
-to source code for all AST nodes, but if that's inconvenient or slow, it's
-allowed to make tradeoffs, such as only preserving them for composite types.
+The AST won't be homoiconic; Clojure achieved it by wasting memory, as is the
+JVM way. That said, we're spiritually close to homoiconic languages, by virtue
+of defining the "syntax" of the language in terms of data structures, not text.
 
-Describing a language in a simple, fixed data notation with a homoiconic AST,
-and avoiding keywords, is an extremely powerful idea which greatly simplifies
-the syntax, parsing, and AST manipulation, allows for very flexible DSLs, and
-makes learning easier for many. This has been well-explored in Lisps, but our
-system is different from theirs.
+Describing a language in a simple, fixed data notation, and avoiding keywords,
+is an extremely powerful idea which greatly simplifies the syntax, parsing, and
+AST manipulation, allows for very flexible DSLs, and makes learning easier for
+many. This has been well-explored in Lisps.
 
-In one sense, the syntax of the language is frozen forever. When new features
-are released, users don't have to learn new arcane syntaxes. In another sense,
+The data notation syntax is fixed. The parser is implemented once. Users learn
+the notation, and _think_ of language features in terms of data. When adding
+new language features, even ones very syntactically distinct, we define them in
+terms of existing data nodes, with no changes to the parser. Users also learn
+new features in terms of data.
+
+In one sense, the syntax of the language is frozen forever. In another sense,
 the syntax is infinitely flexible, because our data notation can represent a
 huge range of "shapes". Code can be given any shape suitable for the task.
 
-By default, the parser discards comments. Preserving comments is an optional
-switch used by formatters and documentation generators.
-
-The parser's idea of "symbols" is Lisp-style: arbitrary ASCII printables not
-reserved for other purposes. The compiler splits symbols at dots, before each
-dot, except at the boundaries. This means, for example, that `.one.two.three.`
-becomes `.one .two .three.`. The purpose of this split is apparent in
-[#call_syntax].
-
-Atomic tokens are separated by whitespace or delimiters. Aside from that,
-our notation is entirely whitespace-insensitive.
+Our notation is whitespace-insensitive, except a few edge cases where atomic
+tokens must be separated by whitespace or other tokens.
 
 There are no statements, only expressions.
 
@@ -133,16 +129,14 @@ Configuration files would be written in a specialized version of the data
 notation, with support for `{}` dicts, `nil`, `false`, `true`, once again
 similar to the EDN. See `./example_config.mox`.
 
-While the syntactic flexibility is extreme, its lower bound is the data
-notation: the underlying structures are always recognizable. Higher level
-constructs are _defined in terms of data structures_, not in terms of
-textual tokens such as "keyword X followed by character Y".
+While the syntactic flexibility is extreme, the data notation also places
+a lower bound on the expressivity: the underlying structures are always
+recognizable.
 
 Unlike Lisps, this language aims to have distinct visual code shapes for
 distinct concepts. Glancing at a code should vaguely tell you the shape
 of the control flow. Declarations should be readily distinguishable from
-usage. Sufficiently different types and data structures should be visually
-distinct; the list vs dict / struct distinction is one of many such cases.
+usage. Sequences should be distinguishable from key-value maps at a glance.
 
 However, _like_ Lisps, we aim to define these syntactic constructs entirely
 in library code. They are not part of the data notation, and the compiler
@@ -637,8 +631,11 @@ We have specific design requirements for the call syntax:
 - Avoid having to separate atomic tokens with `,` or `;`. The following must
   be valid syntax for a list with 3 elements: `[one two three]`. Our data
   notation forbids `,` and `;`, making this a hard requirement.
+- Totally unambiguous; calls must be visually clear without hidden context,
+  such what the types are, or what is the proc arity. This makes correct
+  syntax highlighting of calls possible, in stark contrast with Rebol.
 
-So here's the current plan (`-` stands for any operator):
+So here's the current plan; `-` stands for any operator:
 - Operator binary infix: `arg_0 - arg_1`
 - Operator unary postfix: `arg_name.-`
 - Operator unary prefix: `-.arg_name`
@@ -646,9 +643,9 @@ So here's the current plan (`-` stands for any operator):
 - Identifier unary prefix: `proc_name. arg_name`
 - Identifier binary infix: `arg_0 .proc_name. arg_1`
 
-Operator-shaped symbols are always used in binary infix call position, without
-dots, and all other calls involve dots. (Note that struct fields use getter and
-setter procs, without any dedicated syntax.)
+Operator-shaped symbols without dots are always in binary infix call position.
+All other calls involve dots. (Note that struct fields use getter and setter
+procs, without any dedicated syntax.)
 
 The big deal (really!) is we don't need the `:,;` separators / joiners.
 These are syntactically valid Clojure-style structures (list and dict).
@@ -662,15 +659,15 @@ These are syntactically valid Clojure-style structures (list and dict).
   }
 
 When rapidly writing and editing code, the cost of separators / joiners adds up
-real fast. It seems "invisible" to most programmers. My hypothesis is that most
-folks either haven't used languages without this issue, or haven't paid enough
-attention to how much time is spent fixing the errors caused by the "need" for
+real fast. Most programmers seem to be fine with this. My hypothesis is that
+most folks either haven't been spoiled by languages without this issue, or
+haven't paid enough attention to how much time is wasted fixing typos involving
 these characters.
 
 Like Lisps, we use the same call syntax for runtime and compile-time procs.
-This allows to implement language features with library procs rather than in
-the compiler, while also keeping user code clean. Procs can be marked for
-compile-time execution at the declaration level.
+Our heavy reliance on implementing language features as regular compile-time
+procs makes this unavoidable. Procs can be marked for compile-time execution
+at the declaration level.
 ;;
 
 ;;
@@ -1850,9 +1847,9 @@ case.{
 ;;
 Since we allow and heavily use duplicate keys in {} literals, we could easily
 support this keyword-style syntax as well. Like all other special expressions,
-this would be done entirely in (standard)library code, not in compiler core.
+this would be done entirely in (standard) library code, not in compiler core.
 External libraries can invent their own alternatives. That said, stdlib
-conditionals will probably get special support from syntax highlighters.
+conditionals are likely to get special support from syntax highlighters.
 ;;
 case.{
   when one   then two
@@ -1860,6 +1857,47 @@ case.{
   elif five  then six
   else seven
 }
+
+;;
+### Loops
+
+We provide the typical "while" and "iterate this collection" loops.
+If we ever provide CTO, it would probably require a special pragma
+for validating that the recursive call can actually become a loop.
+
+It needs to be possible to implement the "iterate me" interface / protocol
+on arbitrary types. For regular dense arrays, this needs to have zero
+runtime overhead.
+
+Loops are expressions. A "break" terminates the loop, optionally returning
+a provided value, if any. The result can be assigned to a variable.
+
+The syntax is entirely undecided.
+;;
+
+;; Syntax is TBD. ;;
+ind = 0
+while.(predicate).(
+  val = some_coll.(ind)
+  ind.++
+)
+broke = while.(predicate).(
+  val = some_coll.(ind)
+  if.(val == some_sentinel).(broke = val) ;; break ;;
+  ind.++
+)
+
+;; Syntax is TBD. ;;
+iter.(coll : val).(
+  log.[`val: ` val]
+)
+iter.(coll : val key).(
+  log.[`val: ` val]
+  log.[`key: ` key]
+)
+iter.(coll : _ key).(
+  log.[`key: ` key]
+)
 
 ;;
 ### Truthiness
@@ -1983,7 +2021,7 @@ So the natural solution is that distinct types inherit everything, but require
 explicit conversion. Distinctness is the only difference.
 
 We could also consider supporting a form of selective distinctness where only
-specific behaviors are inherited, but only after looking at use cases.
+specific behaviors are inherited, but only after looking at actual use cases.
 
 ### Conversions
 
@@ -1992,7 +2030,7 @@ Basic no-brainers:
 - Pointers are distinct from numbers.
 - Distinct types require explicit conversion.
 - Allow implicit widening conversions where safe.
-- Avoid overflow/underflow by default. (Numeric conversions can fail.)
+- No overflow/underflow by default. Numeric conversions can fail.
 
 Basic aims:
 - Make safe cheap conversions implicit.
@@ -2023,8 +2061,8 @@ We're targeting two extremes and everything in-between. Extremes:
 - Entirely explicitly-typed code. Should be used in libraries and utility code.
   More verbose, but provides more guarantees and makes type errors nicer.
 
-The default is extreme type inference (see Haskell), suitable for scripting
-and high level code.
+The default is extreme type inference (see Haskell),
+suitable for scripting and high level code.
 
 For library code and large complicated projects, where duck typing can be too
 error prone or the errors become too obtuse, it should be possible to enforce

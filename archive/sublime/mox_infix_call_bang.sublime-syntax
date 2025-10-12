@@ -1,8 +1,0 @@
-%YAML 1.2
----
-version: 2
-extends: Packages/mox/mox_infix_base.sublime-syntax
-scope: source.mox
-
-variables:
-  call_op: '!'

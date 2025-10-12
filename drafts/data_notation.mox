@@ -1,41 +1,62 @@
 ;;
 ## Data Notation
 
-Our language has "levels". The first level defines a "data notation": literal
-syntax for various primitive types and nestable blocks. This level is not aware
-of any language specifics.
+Our language's syntax is defined at two levels. The first level defines a
+_data notation_: a set of rules for converting text to a nested structure of
+data nodes. This level is not aware of any language specifics. The second
+level is a programming language "syntax" defined in terms of the data
+notation, in terms of data nodes, not in terms of characters.
 
-This concept is fundamentally inspired by the idea, which has been proven and
-demonstrated in practice, that programming languages greatly benefit from being
+This concept is fundamentally inspired by the idea, which has been demonstrated
+and proven in practice, that programming languages greatly benefit from being
 defined in terms of a foundational data notation, and NOT in terms of character
 sequences, reserved keywords, or similar.
 
 This is conceptually and syntactically similar to Clojure's EDN.
+Unlike EDN, this is intended to represent a wider range of types,
+with context-specific specialization in dialects.
 
 Editors should implement a simplified syntax highlighter for the data
 notation, independent of any language or configuration defined in it.
 This could be useful for future DSLs.
 
-The provided tooling must include a parser and a formatter.
-
-The parser must preserve comments. This is essential for code formatting,
-generating documentation, or automatically editing configuration files.
-
-The parser must preserve enough information for automatic code formatting and
-rewriting. This may require preserving all whitespace, or at least the counts
-of subsequent newlines. Non-whitespace tokens must be printable back exactly
-as they were written.
-
-The parser API should include an option to parse exactly one syntactic form
-out of the input, instead of the entire input; could be useful for embedding
-this notation in some other syntax.
-
 This notation is defined in terms of Unicode characters, independently of any
 text encoding. Specific parser implementations may restrict input to UTF-8
 text. Specific language implementations may restrict literal strings to UTF-8.
 
-This notation currently doesn't define a way to embed binary data.
-It's possible instead to use base64 strings or simply lists of numbers.
+This notation doesn't support commas and discourages unnecessary punctuation.
+Statements, expressions, elements in data structures, and function arguments
+should use only whitespace for separation.
+
+### Specialization
+
+The base data notation is intended to be _specialized_ into dialects.
+Currently two dialects are planned: the language proper, and a config
+data format similar to JSON. Each dialect defines its own semantics.
+Dialects are allowed to slightly modify the parsing rules, and define
+their own syntactic restrictions.
+
+  data_notation ──┬── branch0: language
+                  │
+                  └── branch1: data_format
+
+The data notation defines () [] {} as lists.
+The language and the data format dedicate {} to dicts / structs.
+
+Where syntax highlighting and auto-formatting also need to be
+specialized, dialects should define their own file extensions.
+
+### Types
+
+The base data notation does not dictate the exact types of the data nodes.
+The only requirements are that numeric types are decoded as something numeric,
+comments / strings / symbols are parsed as something stringy, and () [] {} are
+parsed as structures / groups containing the nodes between the opening and
+closing delimiter.
+
+Different dialects are likely to use different node types. A language parser is
+likely to use specialized AST node types, while a generic data parser is likely
+to use regular value types.
 ;;
 
 ;;;;;
@@ -60,32 +81,31 @@ established by Go, Swift, Rust. Comments should use Markdown. A comment
 immediately followed by a named definition serves as the documentation for
 that definition.
 
-As mentioned above, comments must be preserved in the AST. If a language
-defined in terms of this notation has an interpreted form with a REPL, the
-docs generated from the comments might be made accessible in the REPL.
+Parsers should have an option to preserve comments and attach them to data
+nodes. This is needed for formatting and documentation generation, which are
+common and extremely useful features.
 ;;;;;
 
 ;;
 ## Numbers
 
-Numbers should be parsed with unlimited precision, in order to support untyped
-numeric constants and "big number" literals. Ideally, the AST should preserve
-the original text for formatting (print back as-is).
+The notation defines integers and fractional numbers, with several radixes.
+There is no restriction on number length / size, but actual implementations
+may have their own limitations, such as not having arbitrary-precision
+integers or fractionals.
 
-The notation supports several radices.
-Every radix allows integers and fractionals.
+The Ne+N exponent notation is not supported; it conflicts with number-symbol
+adjacency. The exponent notation `NeN` is possible to support (`123e456`).
 
-The Ne+N exponent notation is not supported for now.
+Letters in number literals must be lowercase for ease of reading.
 
-Letters in number literals must be lowercase. Uppercase is reserved for
-potential arbitrary-base exponents.
-
-Number literals support a leading `-`, which is treated as a special case
-distinct from operators. Leading `+` is currently a syntax error; support
-may be added later.
+Number literals may contain a leading `-` or `+`, which is treated as a special
+case distinct from operators / symbols.
 
 There is no support for numeric suffixes seen in some languages,
 like `123ul` in C. Numeric literals are untyped, like in Go.
+
+Numbers may contain `_` separators, but cannot begin with `_`.
 ;;
 
 ;; Binary ;;
@@ -100,19 +120,21 @@ like `123ul` in C. Numeric literals are untyped, like in Go.
 ;; Decimal ;;
 0123456789 0123456789.0123456789
 
+;; Separators ;;
+123_456_789
+
 ;;
-### Parsing Restrictions
+### Number parsing restrictions
 
 The contents of comments and strings are exempt from all restrictions below.
 
 To avoid ambiguities and reserve space for future extensions, the parser must
-reject identifier characters immediately following a number, if they're not
+reject letter characters immediately following a number, if they're not
 valid digits for its radix. This automatically rejects unknown radix
-specifiers, as they appear to be malformed decimals. This restriction must
-also be applied immediately after a known radix specifier.
+specifiers, as they appear to be malformed decimals. This restriction
+must also be applied immediately after a known radix specifier.
 
   0b012         -- Invalid: `2` is not a binary digit.
-  0123456789_   -- Invalid: `_` is not a decimal digit.
   0123456789a   -- Invalid: `a` is not a decimal digit.
   0123456789e10 -- Invalid: `e` is not a decimal digit.
   0b            -- Invalid: missing digit after radix.
@@ -123,37 +145,27 @@ also be applied immediately after a known radix specifier.
   0hg           -- Invalid: `g` is not a hex digit.
   0x            -- Invalid: missing digit after radix.
 
-To avoid ambiguities, the parser must reject a dot immediately followed by a
-decimal digit, except inside numeric literals.
+Aside from letters, numbers may be immediately followed by any other node
+defined in this data notation:
 
-  .0123456789   ; Invalid.
-  ..0123456789  ; Invalid.
-  ...0123456789 ; Invalid.
-  . 0123456789  ; Valid.
-  . abcdef      ; Valid.
+  10+20  -- Parsed like `10 + 20`.
+  10[20] -- Parsed like `10 [20]`.
+  10.len -- Parsed like `10 .len`.
 
-To avoid ambiguities, the parser must reject a number ending with a dot which
-is not immediately followed by a digit appropriate for its radix.
+The fractional dot must have digits on both sides,
+otherwise it becomes a standalone symbol:
 
-  0b01.         ; Invalid.
-  0b01.2        ; Invalid.
-  0123456789.   ; Invalid.
-  0123456789.a  ; Invalid.
-
-  0b01.0        ; Valid.
-  0b01 .        ; Valid.
-  0b01 . 2      ; Valid.
-  0123456789.0  ; Valid.
-  0123456789 .  ; Valid.
-  0123456789 .a ; Valid.
+  1.2 -- Parsed as a fractional number.
+  .1  -- Parsed as `. 1` where `.` is a symbol.
+  1.  -- Parsed as `1 .` where `.` is a symbol.
 
 ### Characters
 
 Character literals are currently not supported
 because they're easily avodable.
 
-One common approach is to define a function that takes a string and returns a
-Unicode code point. Python example:
+One common approach is to define a function that takes a string
+and returns a Unicode code point. Working Python example:
 
     ord("a") # 97
 
@@ -162,8 +174,8 @@ Thus, we avoid unnecessary syntax at no runtime cost. This approach is also
 more flexible: you could define multiple functions, tailored for specific use
 cases.
 
-If we really wanted character literals, they could use dead syntactic space
-in numeric literals, something like:
+If we really wanted character literals, they could use otherwise dead
+syntactic space in numeric literals, something like:
 
   0c_a -- Interpreted as 97 (lowercase "a").
 
@@ -173,31 +185,39 @@ in numeric literals, something like:
 ;;
 ## Strings
 
-All string literals are multi-line. Single quotes are currently not supported
-and generate a parse error.
+All string literals are multi-line. Apostrophe-like single quotes
+are currently not supported and generate a parse error.
 
 All string literals support indefinitely resizable fences, similar to comments.
-All of the following are valid:
+The only restriction is that a fence cannot consist of exactly two quote chars,
+because that would be ambiguous with an empty string literal.
+
+All of the following are valid string literals:
 
   ""
   "str"
-  ""str""
   """str"""
   """"str""""
   ``
   `str`
-  ``str``
   ```str```
   ````str````
+
+The following code is not what it seems:
+
+  ""str"" -- Parsed like "" str "".
+  ``str`` -- Parsed like `` str ``.
 
 There's no special support for string interpolation. Languages defined in
 terms of this notation may choose to implement some form of interpolation or
 C-printf-like formatting via macros. The default recommended approach is to
-provide a variadic function that collates a single string from its arguments.
+provide a variadic function that collates a single string from its arguments:
+
+  str.[one two three]
 ;;
 
 ;;
-Double-quoted strings are multiline, with indefinitely resizable fences,
+Double-quoted strings are multi-line, with indefinitely resizable fences,
 and support character escape sequences.
 
 Since code formatters need to be able to write code back as-is, a parser should
@@ -210,7 +230,7 @@ supports newlines and escapes: \t \n
 "
 
 ;;
-Backquoted strings are multiline, with indefinitely resizable fences,
+Backquoted strings are multi-line, with indefinitely resizable fences,
 and are raw, without any escape sequences.
 ;;
 `
@@ -221,40 +241,44 @@ supports newlines, but not escapes: \t \n
 ;;
 ## Symbols
 
-Symbols are sequences of unquoted characters, and may include most printable
-non-whitespace ASCII characters:
+Symbols are sequences of unquoted characters, and may include
+most of the printable non-whitespace ASCII characters:
 
   ABCDEFGHIJKLMNOPQRSTUVWXYZ
   abcdefghijklmnopqrstuvwxyz
   0123456789
   ~ ! @ # $ % ^ & * : < > ? / \ | = + - _ .
 
-Languages may define restrictions such as "identifiers" vs "operators".
+The set of allowed "operator-like" characters is likely to be extended later.
+
+A symbol can never begin with a decimal digit.
+
+The dot `.` is special: it terminates symbols. A leading dot takes precedence
+over a trailing dot. Additionally, the restriction of not starting with a
+decimal digit also applies after a dot, allowing numbers in dot-chains:
+
+  one.two         -- Parsed like `one .two`
+  one.two.three   -- Parsed like `one .two .three`
+  one.123.two     -- Parsed like `one. 123 .two`
+  one.123.456.two -- Parsed like `one. 123.456 two`
+
+We distinguish "identifier characters" and "operator characters", but at the
+base level of the data notation, symbols may contain arbitrary mixtures of
+these characters. Distinct adjacent symbols must be separated by whitespace:
+
+  - -- --- + ++ +++ = == === -- Distinct symbols.
+  one+two                    -- Parsed as one symbol.
+  one + two                  -- Parsed as three symbols.
+  10+20+30                   -- Parsed as `10 +20 +30`: num, sym, sym.
+  10 + 20 + 30               -- Parsed as num, sym, num, sym, num.
+
+Specialized dialects may define additional restrictions
+on the mixing of "identifier" and "operator" characters.
 
 The base level of notation doesn't define any meaning for any symbols.
 In practice, data decoders and encoders would use a slightly higher level
 specialization of the notation, closer to JSON, with support for the values
 `nil` `false` `true` and dictionaries via `{}`.
-
-Since numeric literals are syntactically a subset of symbols, the parser must
-parse them first, and avoid syntactic ambiguity by rejecting immediately
-adjacent numbers and symbols, with the special exception of leading `-`
-before a number.
-
-This notation doesn't support commas and discourages unnecessary punctuation.
-Statements, expressions, elements in data structures, and arguments in
-function calls rely on whitespace for separation.
-;;
-
-;;
-Because "operators" and "identifiers" are not separated in this notation and
-left up to languages, they must be whitespace-separated:
-
-- -- --- + ++ +++ = == === ; Distinct operators.
-one+two                    ; Invalid, doesn't parse.
-one + two                  ; Valid.
-10+20+20                   ; Invalid, doesn't parse.
-10 + 20 + 30               ; Valid.
 ;;
 
 ;;
@@ -268,7 +292,7 @@ own rules, such as using only one pair of delimiters.
 That said, {} is generally intended for dicts / maps / structs.
 ;;
 () [] {}
-([10 "20"] {30 "40" (blah)})
+([10 "20"] {30 "40" (ident)})
 
 ;;
 ## Calling
@@ -279,7 +303,7 @@ format should not attempt to detect "calls", leaving this to specific
 languages.
 
 That said, the actual language does have a specific call notation.
-See `./lang.md`.
+See `./lang.mox`.
 ;;
 
 ;; Dot-based unary call notation: ;;
@@ -288,17 +312,17 @@ some_func.some_arg
 ;; Infix call: ;;
 10 + 20
 
-;; Outside-block call notation: ;;
+;; Outside-block prefix call notation: ;;
 some_func(arg arg arg)
 some_func[arg arg arg]
 some_func{arg arg arg}
 
-;; Inside-block call notation: ;;
+;; Inside-block prefix call notation: ;;
 (some_func arg arg arg)
 [some_func arg arg arg]
 {some_func arg arg arg}
 
-;; Explicit postfix call notation: ;;
+;; Forced prefix call notation: ;;
 some_func: arg arg arg
 some_func! arg arg arg
 
@@ -345,11 +369,11 @@ JSON is self-describing for dynamic languages when using a small number of
 built-in types. For typed languages, JSON is not self-describing, and lacks
 the fluency to annotate values with types.
 
-This notation can be specialized to represent arbitrary types by using a
-"call" / "constructor" convention. This allows a much richer set of types
-compared to JSON. In this sense, our notation is closer to XML than JSON. But
-compared to XML, it's MUCH easier to write and read, and has a richer set of
-primitive building blocks, not just strings.
+This notation may be specialized to support explicit typing with "constructor"
+calls. This allows a much richer set of types compared to JSON. In this sense,
+our notation is closer to XML than JSON. But compared to XML, it's MUCH easier
+to write and read, and has a richer set of primitive building blocks, not just
+strings.
 
 Example of such specialization below. Rust users may spot a similarity to RON,
 but this notation is lighter because it avoids `:` and `,`.
@@ -366,34 +390,34 @@ allowing to omit type specifiers:
 ;;
 
 ;; Various ways to represent lists ;;
-["value0" "value1" "value2"]
-List["value0" "value1" "value2"]
-[List "value0" "value1" "value2"]
-:["value0" "value1" "value2"]
-[: "value0" "value1" "value2"]
+[`value0` `value1` `value2`]
+List[`value0` `value1` `value2`]
+[List `value0` `value1` `value2`]
+:[`value0` `value1` `value2`]
+[: `value0` `value1` `value2`]
 
 ;; Various ways to represent sets ;;
-("value0" "value1" "value2")
-Set("value0" "value1" "value2")
-(Set "value0" "value1" "value2")
+(`value0` `value1` `value2`)
+Set(`value0` `value1` `value2`)
+(Set `value0` `value1` `value2`)
 
 ;; Various ways to represent dicts ;;
-{"key0" 123 "key1" 456 "key2" 789}
-Dict{"key0" 123 "key1" 456 "key2" 789}
-::{"key0" 123 "key1" 456 "key2" 789}
+{`key0` 123 `key1` 456 `key2` 789}
+Dict{`key0` 123 `key1` 456 `key2` 789}
+::{`key0` 123 `key1` 456 `key2` 789}
 
 ;; Datetime ;;
-Time("1234-12-34T01:02:03Z")
+Time(`1234-12-34T01:02:03Z`)
 
 ;; XML ;;
 html[
   body[
-    {attr0 "value0" attr1 123}
+    {attr0 `value0` attr1 123}
 
     span[
-      {attr2 "value2" data-attr 456}
+      {attr2 `value2` data-attr 456}
 
-      namespace:element["text_node"]
+      namespace:element[`text_node`]
     ]
   ]
 ]

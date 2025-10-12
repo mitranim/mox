@@ -1,6 +1,6 @@
 ;;
 This file tracks various minor ambiguities spotted in the lang drafts,
-and possible solutions.
+and solutions / disambiguations.
 ;;
 
 ;;
@@ -76,3 +76,44 @@ Since we encourage structs to keep APIs extensible, we'll probably just avoid
 tuples in the type system, like Go did. They should however be implementable
 in library code, for cases where tuples are best.
 ;;
+
+;;
+## Unary and binary calls
+
+Our call syntax has what may seem like a built-in ambiguity in symbol chains.
+The following could be seen as representing either an unary or a binary call:
+;;
+one.two.three
+
+;;
+However, at the data notation level, we disambiguate this
+by splitting symbols at dots, turning into 2 unary calls:
+;;
+one .two .three
+
+;;
+Binary symbolic calls can be used by splitting in different places manually:
+;;
+one .two. three
+
+;;
+However, this creates a perverse incentive to manually overload each symbolic
+binary proc with an unary variant which returns a curried unary proc, allowing
+to call it without the preceding space. The following assumes that the current
+scope has an unary proc `two` which can be called on `one` and returns an unary
+proc which can be called on `three`:
+;;
+one.two. three
+
+;;
+This is very similar to auto-bound methods in Go and Python. Since it's such a
+common use case, we might go ahead and make it built-in: for every binary proc,
+the compiler auto-defines an unary currying variant. If this creates too many
+naming conflicts, we would abandon the feature or make it opt-in.
+
+The following code assumes that `map` was only defined as a binary proc,
+but the compiler auto-derived an unary version.
+;;
+src = [10 20 30]
+out = src.map. fn.(X * 2)  ;; curried unary ;;
+out = src .map. fn.(X * 2) ;; actual binary ;;

@@ -7,19 +7,20 @@ file_extensions: [mox]
 
 # TODO:
 # - Struct fields should have `variable.other.member.declaration.mox` in struct
-#   declarations and regular `variable.other.member.mox` in dict literals.
+#   declarations and regular `variable.other.member.mox` at usage sites.
 # - Support destructuring in declarations.
 # - In declarations, differentiate kinds: type / function / value.
 #   - Needed for indexing types and functions declared in nested scopes.
-# - In calls like `symbol.123`, scope numbers numerically, not symbolically.
-# - Support strings-as-symbols in declaration positions.
-# - In structs, disallow operator-looking symbols in key positions,
-#   including the first position.
+# - In declaration positions, disallow operators (due to ambiguity).
+# - In declaration positions, support strings-as-symbols (for disambiguation).
 # - Put `meta.type` scopes into type literals.
-# - Consider always scoping `X Y Z` variables as parameters.
+# - Consider always scoping `X Y Z` symbols as parameters.
 
 variables:
-  line_start: '^[\t ]*'
+  line_start: '^\s*'
+  sym_unqual: (?<!{{dot}}){{sym}}
+  ident_unqual: (?<!{{dot}})[{{ident_chars}}]+(?![{{oper_chars}}])
+  oper_unqual: (?<!{{dot}})[{{oper_chars}}]+(?![{{ident_chars}}])
 
 contexts:
   main:
@@ -35,14 +36,14 @@ contexts:
   # SYNC[declarations].
   root-decl-pop:
     # `_` is special-cased to be blank in any context.
-    - match: '{{line_start}}{{sym_break_begin}}(_){{sym_break_end}}'
+    - match: '{{line_start}}{{sym_begin}}(_){{sym_end}}'
       captures:
         1: variable.language.blank.mox
       pop: 1
 
     # `one = two` declarations in root scope need to be scoped
     # before other infix operations, see below.
-    - match: '{{line_start}}({{sym_unqual}})(?=\s*={{sym_break_end}})'
+    - match: '{{line_start}}({{sym_unqual}})(?=\s*={{sym_end}})'
       captures:
         1: entity.name.mox
       pop: 1
@@ -55,12 +56,22 @@ contexts:
     #
     #   one + two
     #   one.two
+    #   one. two
     #   one .two
     #   one .two. three
     #
     # However, the following is a valid declaration in root / struct scope:
     #
     #   one +.two
+    #
+    # The following rule scopes `one` as a function in `one.10` and `one. two`,
+    # but not in `one.two`:
+    - match: '{{line_start}}({{sym_unqual}})(?={{dot}}(?!{{sym}}))'
+      captures:
+        1: variable.function.mox
+      pop: 1
+
+    # Same as above, but an operand, not a proc.
     - match: '{{line_start}}({{sym_unqual}})(?=\s*(?:{{dot}}|{{oper_unqual}}))'
       captures:
         1: variable.other.mox
@@ -84,6 +95,8 @@ contexts:
         1: variable.language.blank.mox
         2: keyword.operator.assignment.mox
       set: expr-pop
+    # Known false positive: in `one. two = 123`,
+    # `two` is scoped as declaration.
     - match: '({{sym}})\s+(=)(?=\s|$)'
       captures:
         1: variable.declaration.mox
@@ -116,22 +129,22 @@ contexts:
     - include: sym-dot-match
 
   sym-dot-end-match:
-    - match: '{{sym_segment}}(?={{dot}}{{sym_segment}})'
+    - match: '{{sym}}(?={{dot}}{{sym}})'
       scope: variable.other.mox
-    - match: '{{sym_segment}}(?={{dot}})'
+    - match: '{{sym}}(?={{dot}})'
       scope: variable.function.mox
 
   sym-const-pop:
-    - match: '{{sym_break_begin}}(?:true|false|nil){{sym_segment_break_end}}'
+    - match: '{{sym_begin}}(?:true|false|nil){{sym_end}}'
       scope: constant.language.mox
       pop: 1
 
   sym-call-suffix-pop:
-    - match: ({{dot}})({{sym_segment}})
+    - match: ({{dot}})({{sym}})
       captures:
         1: punctuation.accessor.mox
         2: variable.function.mox
-      set: req-delim-pop
+      pop: 1
 
   sym-dot-match:
     - match: '{{dot}}'
