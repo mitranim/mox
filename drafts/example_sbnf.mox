@@ -21,8 +21,8 @@ Translation notes:
 - No thought was given to how `~` should be used.
 
 Importing the hypothetical library puts several specialized procs in scope:
-- Implicit conversion `String -> Rule`
-- Implicit conversion `String -> Scopes`
+- Implicit conversion `Str -> Rule`
+- Implicit conversion `Str -> Scopes`
 - `+`  as `Rule Rule -> Rule`
 - `|`  as `Rule Rule -> Rule`
 - `@`  as `Rule Scopes -> Rule`

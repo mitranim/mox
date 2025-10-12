@@ -1,48 +1,25 @@
 ;;
-## Declarations
-
-Most examples below assume that each module is a struct literal. Code in module
-root consists of alternating key-value pairs. Keys are declarations / names,
-values are expressions assigned to those names.
-
-The following is a variable declaration / assignment in module root:
-;;
-some_val 123
-
-;; In procedural blocks, assignment uses the `=` operator: ;;
-some_val = 123
-
-;;
 ## Hello world
 
-A proc body can be prodecural, a list of expressions (one expression here):
+Traditional:
 ;;
-main fn.(
+main = fn.(
   log.`hello world!`
 )
 
 ;; Two expressions. ;;
-main fn.(
+main = fn.(
   msg = `hello world!`
   log.(msg)
 )
 
 ;;
-Just like modules, proc bodies can be expressed with structs. Expressions run
-in dependency order. Independent expressions run in declaration order.
-;;
-main fn.{
-  _   log. msg       ;; Use that field for a side effect. ;;
-  msg `hello world!` ;; Declare a field. ;;
-}
-
-;;
 ## Fibonacci sequence
 
-Actually calling the function:
+The function is defined below. This is how we call it:
 ;;
-fib.42            ;; With a constant value. ;;
-fib.(some_number) ;; With a dynamic value. ;;
+fib.42            ;; With a literal value. ;;
+fib.(some_number) ;; With a named value. ;;
 
 ;;
 Example definition.
@@ -50,25 +27,10 @@ Example definition.
 Easiest to understand: a recursive version incompatible with tail-call
 optimization. See below for a non-stack-overflowing version.
 ;;
-fb fb.(
+fib = fn.(
   (X <= 1)
     ? X
     : fib.(X - 1) + fib.(X - 2)
-)
-
-fib fn.(
-  ;;
-  Some people like to program in the "early return" style which avoids nesting.
-  The compile-time proc `ret` (short for "return") can take 1 or 2 inputs.
-  This 2-input form means: if `X <= 1`, return `X`.
-  ;;
-  ret.((X <= 1) X)
-
-  ;; Alternatively, we could support this: ;;
-  ret.{when (X <= 1) then X}
-
-  ;; Last expression: implicitly returned. ;;
-  fib.(X - 1) + fib.(X - 2)
 )
 
 ;;
@@ -76,14 +38,15 @@ Procedural non-recursive version.
 Translated from bot-generated Python.
 Can probably be greatly simplified.
 ;;
-fib fn.(
+fib = fn.(
   ;;
   `X` refers to the first input.
   This proc is automatically unary because it doesn't access `Y`.
   ;;
   src = X
 
-  ret.((src <= 1) src)
+  ;; Return if nothing to do. ;;
+  (src <= 1) ? ret.(src)
 
   mod = 0
   out = 1
@@ -91,8 +54,8 @@ fib fn.(
 
   while.(ind <= src).(
     ;;
-    The name `=:` is provisional and TBD.
-    Uses inline list destructuring, which must be zero-cost.
+    Reassignment with inline list destructuring.
+    The reassignment operator `=:` is provisional / TBD.
     ;;
     [mod out] =: [out (mod + out)]
     ind =+ 1
@@ -101,34 +64,33 @@ fib fn.(
 )
 
 ;;
-Simple public`fib` which takes one number `X`
+Public interface which takes one number `X`
 and calls an internal implementation.
 ;;
-fib fn.(fib_internal.[X 0 1])
+fib = fn.(fib_internal.[X 0 1])
 
-;; Arrow functions might be available. ;;
-fib num -> fib_internal.[num 0 1]
+;; Might end up with arrow procs too. ;;
+fib = num -> fib_internal.[num 0 1]
 
 ;; Uses recursion and assumes TCO (tail-call optimization). ;;
-fib_internal fn.{
+fib_internal = fn.{
   X [3 Uint]
-  Y Uint
+  Z Uint
   Z (
-    ;; Destructuring ;;
+    ;; destructure ;;
     [A B C] = X
-    ;; C-style ternary "if". ;;
     (A <= 1) ? A : fib_internal.[(A - 1) C (B + C)]
   )
 
   ;;
   Since TCO is error-prone, the language may provide a pragma for validating
-  that a given call is TCO-compatible. See [#pragmas] in the lang doc.
+  that a given proc is TCO-compatible. See [#pragmas] in the lang doc.
   ;;
   :: tco
 }
 
-fib_internal ::.tco
-fib_internal fn.[
+fib_internal :: tco
+fib_internal = fn.[
   [3 Uint] -> Uint
   [A B C] = X
   (A <= 1) ? A : fib_internal.[(A - 1) C (B + C)]
@@ -169,16 +131,16 @@ callbacks, which must be declared as methods on an element subclass.
 We might be able to do this with pragmas. Noisy but rarely needed.
 ;;
 
-Some_elem HTMLElement.subclass
+Some_elem = HTMLElement.subclass
 
-connectedCallback Pragma.(HTMLElement.method)
-connectedCallback fn.(;; Initialize. ;;)
+connectedCallback :: Some_elem.method
+connectedCallback = fn.(;; Initialize. ;;)
 
-disconnectedCallback Pragma.(HTMLElement.method)
-disconnectedCallback fn.(;; Deinitialize. ;;)
+disconnectedCallback :: Some_elem.method
+disconnectedCallback = fn.(;; Deinitialize. ;;)
 
 ;; Library code should also be able to invent more specialized "syntax": ;;
-Some_elem HTMLElement.subclass.{
+Some_elem = HTMLElement.subclass.{
   prototype {
     connectedCallback    fn.(;; Initialize. ;;)
     disconnectedCallback fn.(;; Deinitialize. ;;)
@@ -186,11 +148,11 @@ Some_elem HTMLElement.subclass.{
 }
 
 ;; Non-callbacks don't need any of that, and would be regular procs: ;;
-init fn.{
+init = fn.{
   X Some_elem
   Y {
-    id  String
-    cls String
+    id  Str
+    cls Str
   }
   Z (
     X.id = id
@@ -199,19 +161,14 @@ init fn.{
   )
 }
 
-Some_elem.init.{id `some_id` cls `some_cls`}
+Some_elem.new.init.{id `some_id` cls `some_cls`}
 
 ;;
 Custom DOM elements need registration. Web frameworks do this with decorators,
 which correspond to our pragmas. It's actually possible to register implicitly,
-but this is just for demonstration purposes.
-
-This is supposed to invoke a compile-time proc `ElemReg String -> Pragma`,
-where `ElemReg` is the type of the `custom_elem` registry. The resulting
-`Pragma` may be used to modify our class, such as giving it a tagname for
-HTML rendering.
+so this is just for demonstration purposes.
 ;;
-Some_elem custom_elem.`some-elem`
+Some_elem :: custom_elem.`some-elem`
 
 ;;
 ## JS
@@ -225,37 +182,35 @@ some_lib = import.{
   sym {
     SOME_CONST Int
     proc0      Int -> Int
-    proc1      [Int String Bool] -> Dict
-    proc2      {one Int two String} -> {three Bool four List}
+    proc1      [Int Str Bool] -> Dict
+    proc2      {one Int two Str} -> {three Bool four List}
 
     ;;
     Alternative proc type syntax. This is probably preferred because
     `->` is difficult for syntax highlighters in complex cases.
     Spacing may or may not be required depending on how we handle this.
     ;;
-    proc0 Fn. Int. Int
-    proc1 Fn. [Int String Bool]. Dict
-    proc2 Fn. {one Int two String}. {three Bool four List}
+    proc0 fn. Int. Int
+    proc1 fn. [Int Str Bool]. Dict
+    proc2 fn. {one Int two Str}. {three Bool four List}
   }
 }
 
-do.(
-  ;; Optional: splurge the library into scope. ;;
-  * = some_lib
+;; Optional: splurge the library into scope. ;;
+some_lib.include
 
-  _ = SOME_CONST
-  _ = proc0.123
-  _ = proc1.[123 `str` true]
+_ = SOME_CONST
+_ = proc0.123
+_ = proc1.[123 `str` true]
 
-  ;; Deconstruct structs by listing field names. ;;
-  (three four) = proc2.{one 123 two `str`}
+;; Destructure by listing field names. ;;
+(three four) = proc2.{one 123 two `str`}
 
-  ;; Deconstruct with alternative local names. ;;
-  {
-    three local_var_0
-    four  local_var_1
-  } = proc2.{one 123 two `str`}
-)
+;; Destructure with alternative local names. ;;
+{
+  three local_var_0
+  four  local_var_1
+} = proc2.{one 123 two `str`}
 
 ;;
 ## Markup
@@ -274,12 +229,11 @@ a `List` of child nodes, replaces the node's children with that list, and
 returns the same `Node`. The `.[]` calls below invoke that proc. In essence,
 any node is "callable" with a child list.
 
-It also defines an anonymous `Node String -> Node` which sets a node's text.
+It also defines an anonymous `Node Str -> Node` which sets a node's text.
 This makes any node "callable" with a string, resulting in terse but clear
 markup below.
 ;;
-
-H import.`std:html`
+H = import.`std:html`
 
 H.html.{lang `en`}.[
   H.head.[
@@ -297,15 +251,15 @@ Example of customizing the behavior of the renderer.
 Since modules are structs and structs are modules,
 we can define an inline "sub-module" with overrides.
 ;;
-H {
-  * include.`std:html`
+H = struct.(
+  include.`std:html`
 
   ;;
   Overriding a proc should affect all procs using it.
   With this override, every value will be rendered in its "repr" form.
   ;;
-  render_text fn.(X.repr)
-}
+  render_text = fn.(X.repr)
+)
 
 ;;
 Due to the override, text is now rendered with quotes,

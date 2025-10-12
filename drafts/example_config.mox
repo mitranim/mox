@@ -50,7 +50,7 @@ which is a union of all default types supported by the notation:
 - Bool
 - Int
 - Float
-- String
+- Str
 - List
 - Dict (ordered)
 - Comment

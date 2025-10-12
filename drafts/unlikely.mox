@@ -1,0 +1,98 @@
+;; Archive of ideas which seem unlikely to be implemented. ;;
+
+;;
+## Modules as struct literals?
+
+---
+
+This idea seems pretty cool but tentatively rejected, because:
+- Redundant with blocks. Having 2 options is bad.
+- Unintuitive to newcomers.
+- Complicates the internals (since regular blocks are required anyway).
+- Complicates syntax highlighting.
+- Incompatible with early returns, which we'd like to encourage.
+
+---
+
+If blocks are structs, then modules are structs. Like inside {}, but with the
+braces omitted. Since the parser and compiler understand dict / struct
+literals, this gives us an easy way to provide the "declaration" intrinsic
+without any special syntax and without the compiler having to predeclare a
+symbol for it.
+
+Thus, the following code should be valid in module root.
+These are key-value pairs, where keys are declarations.
+;;
+some_const 10
+some_proc  fn.<definition_here>
+
+;;
+If we go full hog and generalize this to _all_ scopes, then most of the code
+should consist of alternating key-value pairs. Values are assigned to keys.
+Inside blocks, keys refer to values.
+;;
+some_result {
+  some_field {
+    one   10
+    two   20
+    three one + two
+  }
+  another_field some_field.three
+}
+
+;;
+## Blocks as struct literals?
+
+Another proto-concept. If scopes are structs, the inverse is true
+and we can use struct literals for blocks!
+;;
+
+val = do.{
+  one 10
+
+  ;;
+  The field name `_` tells the compiler to discard this.
+  This side effect runs exactly once.
+  ;;
+  _ stdout.println.[`intermediary value: ` one]
+
+  two (one + 20)
+}
+
+log.(val.one) ;; 10 ;;
+log.(val.two) ;; 30 ;;
+
+;;
+Just like modules, proc bodies can be expressed with structs. Expressions run
+in dependency order. Independent expressions run in declaration order.
+;;
+main fn.{
+  _   log. msg       ;; Use that field for a side effect. ;;
+  msg `hello world!` ;; Declare a field. ;;
+}
+
+;;
+Example of customizing the behavior of the renderer.
+Since modules are structs and structs are modules,
+we can define an inline "sub-module" with overrides.
+;;
+H {
+  * include.`std:html`
+
+  ;;
+  Overriding a proc should affect all procs using it.
+  With this override, every value will be rendered in its "repr" form.
+  ;;
+  render_text fn.(X.repr)
+}
+
+;;
+`fn` can be chainably "called" to construct a proc type, `[Str] -> Str` in
+this case, and any proc type can be "called" with a body to construct an
+actual implementation, an instance of that proc type.
+;;
+join_lines = fn.([Str]).(Str).[
+  len = X.sum.(X.type.len) + X.len - 1
+  buf = Str.{cap len}
+  join.{src X buf buf sep "\n"}
+]

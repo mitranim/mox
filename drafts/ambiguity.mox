@@ -6,9 +6,8 @@ and solutions / disambiguations.
 ;;
 ## Operator declarations
 
-To implement operators, you have to actually declare them. We have two ways of
-declaring stuff: with a struct field (note that modules are structs), and with
-procedural assignment.
+To implement operators, you have to actually declare them. We have two ways
+of declaring stuff: procedural assignment and struct fields.
 
 Operator-looking symbols without a dot on either side are always treated as
 binary infix and combined with the expressions on both sides. This takes
@@ -34,25 +33,25 @@ errors too.
 ;;
 
 ;; Not what it looks like. ;;
-Person struct.{
+Person = struct.{
   Id    Uuid
   *     Named
   *     Timed
-  email String
+  email Str
 }
 
 ;; This is what actually happens. ;;
-Person struct.{
+Person = struct.{
   Id    Uuid * Named * Timed
-  email String
+  email Str
 }
 
 ;; Workaround. ;;
-Person struct.{
+Person = struct.{
   Id    Uuid
   `*`   Named
   `*`   Timed
-  email String
+  email Str
 }
 
 ;; Not what it looks like. ;;

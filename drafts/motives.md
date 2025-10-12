@@ -85,10 +85,10 @@ The world needs a final programming language for everything.
   * Requires implicit memory management in the core language; source code should look GC-able-like.
   * May need the ability to transparently switch default string encoding.
     * Motive: save space and performance in JS, while using UTF-8 on native targets.
-    * Native target: string literals and `String` are UTF-8.
-    * JS target: string literals and `String` are UTF-16.
-    * Encoding differences are encapsulated in `String` which is defined differently depending on the target.
-    * `String` abstracts away everything encoding-specific:
+    * Native target: string literals and `Str` are UTF-8.
+    * JS target: string literals and `Str` are UTF-16.
+    * Encoding differences are encapsulated in `Str` which is defined differently depending on the target.
+    * `Str` abstracts away everything encoding-specific:
       * count graphemes
       * count grapheme clusters
       * iterate graphemes

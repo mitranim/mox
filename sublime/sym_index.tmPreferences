@@ -4,7 +4,7 @@
   <key>scope</key>
   <string>
     entity.name,
-    (variable.other.declaration.mox - meta.parens.mox - meta.brackets.mox - meta.braces.mox),
+    (variable.declaration.mox - meta.parens.mox - meta.brackets.mox - meta.braces.mox),
     (variable.other.member.declaration.mox - meta.braces.mox)
   </string>
   <key>settings</key>

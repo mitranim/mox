@@ -461,17 +461,17 @@ The conditional syntax is provisional. See [#conditionals].
 
 The parentheses are optional and used for readability.
 
-The conditions could be simplified by making `String` convertible to `Bool`.
+The conditions could be simplified by making `Str` convertible to `Bool`.
 See [#truthiness].
 ;;
 guess_name = fn.{
   X Person
-  Z String
+  Z Str
   Z case.{
-    (X.name  != ``)  X.name
-    (X.slug  != ``)  (`@` + X.slug)
-    (X.email != ``)  X.email
-    _                `(anonymous)`
+    (X.name  != ``) X.name
+    (X.slug  != ``) (`@` + X.slug)
+    (X.email != ``) X.email
+    _               `(anonymous)`
   }
 }
 
@@ -483,10 +483,10 @@ Shorter definition syntax. `X` is input.
 Input and output types are inferred.
 ;;
 guess_name = fn.(case.{
-  (X.name  != ``)  X.name
-  (X.slug  != ``)  (`@` + X.slug)
-  (X.email != ``)  X.email
-  _                `(anonymous)`
+  (X.name  != ``) X.name
+  (X.slug  != ``) (`@` + X.slug)
+  (X.email != ``) X.email
+  _               `(anonymous)`
 })
 
 ;;
@@ -495,10 +495,10 @@ are not limited to the input / output type `Bool`. See [#truthiness] which
 does not cover this use case properly.
 
 This mimics some dynamically typed languages, but with static typing.
-Given that the first element in the input to `or` is of type `String`,
-every other element must be either `String` or implicitly convertible
-to `String`, and there must be some way to test for truthiness.
-The latter means that `String` must be implicitly convertible
+Given that the first element in the input to `or` is of type `Str`,
+every other element must be either `Str` or implicitly convertible
+to `Str`, and there must be some way to test for truthiness.
+The latter means that `Str` must be implicitly convertible
 to `Bool` in the current scope. Empty strings are falsy.
 ;;
 guess_name = fn.(or.(
@@ -513,7 +513,7 @@ guess_name = fn.(
 )
 
 ;; Shortest typed declaration. Result type is inferred. ;;
-guess_name Person.fn.(
+guess_name = Person.fn.(
   X.name | (X.slug & (`@` + X.slug)) | X.email
 )
 
@@ -702,15 +702,15 @@ some_field.(some_struct)
 The pattern `X.Y -> Z` allows to make a specific type `X` callable
 with a specific type `Y`.
 
-Consider a proc `String Int -> Uint8` which gets a byte at a position.
+Consider a proc `Str Int -> Uint8` which gets a byte at a position.
 If declared in the `X Y -> Z` style, without S, we can "call" a string
 with an integer. The following example should retrieve the byte "n".
 ;;
 `some_string`.10
 
 ;; Placeholder proc definition. The `_` puts it in scope anonymously. ;;
-_ fn.{
-  X String
+_ = fn.{
+  X Str
   Y Uint
   Z (;; (Get and return byte at index.) ;;)
 }
@@ -740,8 +740,8 @@ some_struct .some_field. `some_new_value`
 Operators are always binary infix and don't need dots.
 This example also demonstrates overloads.
 ;;
-10    + 20    ;; Int    Int    -> Int ;;
-`one` + `two` ;; String String -> String ;;
+10    + 20    ;; Int Int -> Int ;;
+`one` + `two` ;; Str Str -> Str ;;
 
 ;;
 Variable declaration and initialization could be defined in stdlib code as a
@@ -756,6 +756,7 @@ and modifies the scope to actually declare the variable.
 some_ident = `some_val`
 
 ;; For variable reassignment, we could define a separate operator. ;;
+some_ident =: `some_new_val`
 some_ident := `some_new_val`
 some_ident <- `some_new_val`
 
@@ -853,10 +854,7 @@ Implicit symbol `X` stands for first argument.
 some_list
   .map.    fn.(X / 2)
   .filter. fn.(X % 2)
-  .fold.   fn.(X.0 + X.1)
-
-;; `fold` probably takes a binary proc: ;;
-.fold. fn.(X + Y)
+  .fold.   fn.(X + Y)
 
 ;;
 If we could get rid of expression grouping, we'd reserve
@@ -871,13 +869,13 @@ some_list
 When LHS and RHS are types or groups of types, `->` constructs a proc type.
 Procs can only be `X -> Z` and `X Y -> Z`.
 ;;
-String -> Int
-(String String) -> String ;; Undecided between () and []. ;;
-[String String] -> String ;; Undecided between () and []. ;;
+Str -> Int
+(Str Str) -> Str ;; Undecided between () and []. ;;
+[Str Str] -> Str ;; Undecided between () and []. ;;
 
 ;; Alternative way to construct proc types. ;;
-fn.String.Int           ;; X -> Z ;;
-fn.String.String.String ;; X Y -> Z ;;
+fn.Str.Int     ;; X -> Z ;;
+fn.Str.Str.Str ;; X Y -> Z ;;
 
 ;;
 ### First-class procs
@@ -980,14 +978,17 @@ ref = 123
 log.(struct_0.struct_1.field_0) ;; 123 ;;
 
 ;;
-Procs which implement conditionals, such as `if`, might end up returning
-references: `Ref X`. Dereferencing the result evaluates the conditional.
+Procs which implement conditionals, such as `if` or `?` and `:`,
+might end up returning references: `Ref X`. Dereferencing the result
+evaluates the conditional.
 
 These refs should exist in memory only at compilation time, not at program
 execution time. Furthermore, they should be compatible with compile-time
 constant evaluation and dead branch elimination.
 ;;
+opt =     predicate ?      expression              ;; Ref Opt X -> Opt X ;;
 opt = if.(predicate).then.(expression)             ;; Ref Opt X -> Opt X ;;
+val =     predicate ?      branch0 :      branch1  ;; Ref X -> X ;;
 val = if.(predicate).then.(branch0).else.(branch1) ;; Ref X -> X ;;
 
 ;;
@@ -1179,9 +1180,8 @@ Modules are files, and imports are file-oriented: you don't import a package,
 you import a specific file. This applies to standard library modules, local
 modules, and external library modules.
 
-Imports are namespaced by protocols, similar to URL protocols.
-The most important ones are `std:` and `git:`. The set of
-supported protocols is likely to grow over time.
+Imports use protocols, similar to URL protocols. The most important ones are
+`std:` and `git:`. The set of supported protocols is likely to grow over time.
 
 Initially we'll require explicit file extensions. This has many advantages:
 - Ease of learning: makes it totally clear where the system finds the module.
@@ -1201,31 +1201,31 @@ and package entry files, similar to how it's done in the JS world.
 ;;
 
 ;; Stdlib imports: ;;
-os import.`std:os.mox`
-io import.`std:io.mox`
+os = import.`std:os.mox`
+io = import.`std:io.mox`
 
 ;; Local imports use explicitly relative paths or absolute paths: ;;
-some_util import.`./util.mox`
-some_lib  import.`/Users/me/some_private_lib/some_file.mox`
+some_util = import.`./util.mox`
+some_lib = import.`/Users/me/some_private_lib/some_file.mox`
 
 ;;
 For libraries, piggybacking on Git seems like a good start.
 Go and Swift did that to great success:
 ;;
-toml import.`git:example.com/some_author/toml/index.mox`
+toml = import.`git:example.com/some_author/toml/index.mox`
 
 ;;
 HTTPS imports have been very successful in the JS world.
 There are many CDNs serving library code. For us, this
-seems relevant for native modules, but could be useful
+seems irrelevant for native modules, but could be useful
 for JS interop (importing JS libs).
 ;;
-some_lib import.`https://example.com/some_lib/index.mox`
-some_lib import.{
+some_lib = import.`https://example.com/some_lib/index.mox`
+some_lib = import.{
   src `https://example.com/some_lib/index.mjs`
   type `js`
   sym {
-    SOME_CONST String
+    SOME_CONST Str
     some_proc  Some_type -> Other_type
   }
 }
@@ -1256,8 +1256,8 @@ Config and usage:
     }
   }
 }
-lib_0 import.`lib_0/some_file.mox`
-lib_1 import.`lib_1/another_file.mox`
+lib_0 = import.`lib_0/some_file.mox`
+lib_1 = import.`lib_1/another_file.mox`
 
 ;;
 ### C interop: import and export
@@ -1285,7 +1285,7 @@ For non-shared libraries, the preferred way is probably to explicitly provide
 header and object paths, as relative paths since they're likely to be vendored.
 Seamless interop should look roughly like this:
 
-  some_lib import.{
+  some_lib = import.{
     type   `c`
     header `./vendor/some_header.h`
     object `./target/some_object.o`
@@ -1324,16 +1324,16 @@ well as ordinal enums.
 We provide conversion procs for all C types, mapping them to our types.
 Free or very cheap conversion is implicit, expensive conversion explicit.
 ;;
-some_lib import.{
-  type   `c`
-  object `./target/some_object.o`
+some_lib = import.{
+  type `c`
+  obj `./target/some_object.o`
   sym {
     SOME_CONST Uint32
     some_proc  [C.string C.int] -> C.int
   }
 }
-pair        `some_string`.cstring_pair
-result_code some_lib.some_proc.(pair)
+pair        = `some_string`.cstring_pair
+result_code = some_lib.some_proc.(pair)
 
 ;;
 ### Import types
@@ -1362,7 +1362,7 @@ but the implementation can be delayed.
 The likely approach is to define an interface (let's say `Importer`) supported
 by the `import` proc, which allows to define the import behavior for any type,
 by implementing that interface for a type. It would be invoked at import time.
-The implementation of this interface for `String` and `[Uint8]` is to simply
+The implementation of this interface for `Str` and `[Uint8]` is to simply
 read the target file and return the bytes as-is. The implementation of this
 interface for `FS` (a virtual file system) is to inspect the file system on
 disk and read all the the directories and files, storing the data in memory
@@ -1373,23 +1373,23 @@ Could be handy for importing structured data such as JSON or TOML.
 Our own data notation would be supported by default, without needing
 to provide a decoder.
 ;;
-some_text import.{
+some_text = import.{
   src  `./some_text.txt`
-  type String
+  type Str
 }
-some_blob import.{
+some_blob = import.{
   src  `./some_blob.bin`
   type [Uint8]
 }
-tzdata import.{
+tzdata = import.{
   src  `./iana_timezone_data`
   type FS
 }
-some_config import.{
+some_config = import.{
   src  `./config.mox`
   type Config
 }
-some_config import.{
+some_config = import.{
   src    `./config.json`
   type   Config
   decode json.decode
@@ -1421,9 +1421,10 @@ overrides. The compiler respects this by copying the original procs and
 specializing them for the new module.
 ;;
 
-include."std/paths"
+include.`std/paths`
 SEP = `.`
-;; ...Plus various proc redefinitions. ;;
+is_root = fn.(X.has_prefix.`$`) ;; Override. ;;
+;; ...Other proc overrides as needed. ;;
 
 ;;
 ## Block expressions
@@ -1447,8 +1448,6 @@ result = do.(
 ;;
 ## Scopes are structs
 
-Proto-concept. Generalization of "modules are structs".
-
 Every block of code with its own scope, starting at module root and all the
 way down, is conceptually considered a struct. Variables are its fields.
 
@@ -1459,108 +1458,56 @@ The block executes once. The result is a struct whose type is inferred by the
 compiler. Public procs from its scope are dumped into the caller's scope.
 This lets the caller access its variables (struct fields) and call procs.
 
-This example assumes public by default. We prefer private by default, but the
-way of making symbols public is not yet defined at this point in the document.
+While we prefer to make declarations private by default, this example assumes
+that when turning a block into a struct, public is the default.
 ;;
 
-val = Struct.(
+val = struct.(
+  ;; Becomes a field. ;;
   one = 10
+
   ;; This side effect runs exactly once. ;;
   stdout.println.[`intermediary value: ` one]
+
+  ;; Becomes a field. ;;
   two = one + 20
 )
 stdout.println.(val.one)
 stdout.println.(val.two)
 
-;;
-If these variables are mutable, we can reassign them. This example assumes
-that variable reassignment is done via implicitly declared procs `S X -> Z`.
-See [#variables] and [#struct_fields].
-;;
-val.one.40
-val.two.50
-stdout.println.[val.one ` ` val.two]
 
-;; Offtopic: stdlib is likely to provide logging shortcuts. ;;
-echo.[val.one ` ` val.two]
-log.[val.one val.two]
+;; If these variables are mutable, we can reassign them. ;;
+val.one = 40
+val.two = 50
 
 ;;
-## Blocks as struct literals?
+## Modules are structs
 
-Another proto-concept. If scopes are structs, the inverse is true
-and we can use struct literals for blocks!
+Modules are blocks, and blocks are structs. Modules are structs. QED.
+
+This should simplify the implementation (no special treatment for module root).
+
+Additionally, we want to support the ability to "inherit" from a module and
+override some of its procs and constants. This should be doable by "including"
+all content of one struct in another, then adding various overrides.
+See [#module_level_overrides].
 ;;
+include.`some_other_module`
+some_proc = fn.(my_override)
 
-val = do.{
-  one 10
-
-  ;;
-  The field name `_` tells the compiler to discard this.
-  This side effect runs exactly once.
-  ;;
-  _ stdout.println.[`intermediary value: ` one]
-
-  two (one + 20)
+;;
+In actual struct and dict literals, "include" might be emulated with a special
+field name, such as `*`. It splurges the content of another struct or dict into
+this one:
+;;
+some_struct = {
+  *          another_struct ;; Splurge all fields from `another_struct`. ;;
+  some_field `some_override`
 }
-
-log.(val.one) ;; 10 ;;
-log.(val.two) ;; 30 ;;
-
-;;
-## Modules as struct literals?
-
-An extention of the previous wild idea / proto-concept. If blocks are structs,
-then modules are structs. Like inside {}, but with the braces omitted. Since
-the parser and compiler understand dict / struct literals, this gives us an
-easy way to provide the "declaration" intrinsic without any special syntax
-and without the compiler having to predeclare a symbol for it.
-
-Thus, the following code should be valid in module root.
-These are key-value pairs, where keys are declarations.
-;;
-some_const 10
-some_proc  fn.<definition_here>
-
-;;
-If we go full hog and generalize this to _all_ scopes, then most of the code
-should consist of alternating key-value pairs. Values are assigned to keys.
-Inside blocks, keys refer to values.
-;;
-some_result {
-  some_field {
-    one   10
-    two   20
-    three one + two
-  }
-  another_field some_field.three
-}
-
-;;
-### Imports in struct-literal modules
-
-It follows that imports are just regular compile-time expressions assigned
-to names, without their own declaration syntax.
-;;
-
-;; Named import: ;;
-str import.`std:strings`
-
-;; Dump/include import: ;;
-* import.`std:prelude`
-
-;;
-The treatment of `*` as dump / include / splurge / spread is not limited to
-module scopes. We can use this for dicts and structs:
-;;
-some_dict {
+some_dict = {
   *               another_dict ;; Splurge all fields from `another_dict`. ;;
   `another_field` nil          ;; Exclude this field. ;;
   `some_field`    `some_override`
-}
-some_struct {
-  *          another_struct ;; Splurge all fields from `another_struct`. ;;
-  some_field `some_override`
 }
 
 ;;
@@ -1583,17 +1530,15 @@ expression and returns a proc implementation.
 The following defines and declares a program's entry point. This definition
 syntax is provisional. This definition does not specify input and output
 types, and is implicitly `Nil -> Nil`.
-
-This declaration assumes that [#modules_are_structs].
 ;;
-main fn.(stdout.println.`hello world`)
+main = fn.(stdout.println.`hello world`)
 
 ;;
 If a proc `S X -> Z` is declared in the current scope, it can be called with
 the syntax `S.X`, and the proc itself is accessed with the syntax `X.S`:
 ;;
 `hello_world`.len ;; 11 ;;
-String.len        ;; Proc of type `String -> Int`. ;;
+Str.len           ;; Proc of type `Str -> Int`. ;;
 
 ;;
 Since arity is fixed and the concepts `X -> Z` and `X Y -> Z` are prolific in
@@ -1601,91 +1546,60 @@ this document, we might as well standardize the names X Y Z. In a declaration,
 they refer to the input and output _types_. In a definition, they refer to the
 input and output _values_.
 ;;
-join_lines fn.{
+join_lines = fn.{
   ;; Input type: must be a sequence of strings. ;;
-  X [String]
+  X [Str]
 
   ;; We haven't declared Y, so the proc is unary: `X -> Z`. ;;
 
   ;; Output type: returns a string. ;;
-  Z String
+  Z Str
 
-  ;;
-  Output implementation.
+  ;; Output implementation. ;;
+  Z (
+    cap = X.sum.(X.type.len) + X.len - 1
+    cap <= 0 ? ret.``
+    buf = Str.make.(cap)
 
-  This example also gives a shot to a simple but wild idea. If modules are
-  structs and their fields are evaluated in dependency order, it should be
-  easy to do the same for all structs, including block structs. This means
-  fields can be declared out-of-order.
-
-  Most likely, fields are SSA (assigned only once).
-  Overloads may be supported, just like in modules.
-  ;;
-  Z {
-    ;;
-    The field `Z` is the output. We assign it here,
-    so it will be returned unless there's a panic.
-
-    Assumes our scope has a `join` compatible with this call signature.
-    `std:strings` should provide it and this example implies an import.
-    ;;
-    Z join.{
+    join.{
       src X
-      buf buf
+      buf buf ;; BYOB ;;
       sep "\n"
     }
-    ;; These fields are private to the block. ;;
-    buf     String.{cap buf_len}
-    len     X.sum.(String.len) ;; Input byte count. ;;
-    buf_len len + X.len - 1    ;; Ignores `X.len == 0` 😅. Don't! ;;
-  }
+  )
 }
 
-;;
-Closer to how most languages declare procs. Again, this isn't
-built-in, but library-declared. Possibilities are endless.
-;;
-join_lines fn.[
-  [String] -> String
+;; Closer to how most languages declare procs. ;;
+join_lines = fn.[
+  [Str] -> Str
 
-  len = X.sum.(X.type.len) + X.len - 1
-  buf = String.{cap len}
+  cap = X.sum.(X.type.len) + X.len - 1
+  cap <= 0 ? ret.``
+  buf = Str.make.(cap)
   join.{src X buf buf sep "\n"}
 ]
 
 ;;
-Another possibility.
-
-`fn` can be chainably "called" to construct a proc type, `[String] -> String`
-in this case, and any proc type can be "called" with a body to construct an
-actual implementation, an instance of that proc type.
+Perhaps a proc type, constructed in this example via `[Str] -> Str`,
+can be "called" to implement a proc of that type.
 ;;
-join_lines fn.([String]).(String).[
-  len = X.sum.(X.type.len) + X.len - 1
-  buf = String.{cap len}
+join_lines = ([Str] -> Str).(
+  cap = X.sum.(X.type.len) + X.len - 1
+  cap <= 0 ? ret.``
+  buf = Str.make.(cap)
   join.{src X buf buf sep "\n"}
-]
+)
 
 ;;
-If the above works, then since the syntax `[String] -> String` constructs a
-proc type, it can also be called to implement the proc.
-;;
-join_lines ([String] -> String).[
-  len = X.sum.(X.type.len) + X.len - 1
-  buf = String.{cap len}
-  join.{src X buf buf sep "\n"}
-]
-
-;;
-Using `_` makes a field anonymous. This can be used to declare overloads for
+Declaring a proc anonymously via `_` can  can be used to declare overloads for
 patterns `X -> Z` and `X Y -> Z` without giving them a symbolic name. See the
 sections [#procs_and_calls], [#proc_overloads], [#call_syntax].
 
-This proc makes it possible to call a `String` with a `Uint`
+This proc makes it possible to call a `Str` with a `Uint`
 to access a byte at that index.
 ;;
-_ fn.{
-  X String
+_ = fn.{
+  X Str
   Y Uint
   Z Byte
   Z (;;
@@ -1694,14 +1608,13 @@ _ fn.{
     (pointer arithmetic)
   ;;)
 }
-_ fn.[
-  (String Uint) -> Byte
+_ = fn.[
+  (Str Uint) -> Byte
   ;; ... ;;
 ]
 
 ;; Usage: ;;
-`some_string`. 10 ;; 'n' ;;
-`some_string`.(10) ;; 'n' ;;
+`some_string`.10 ;; 'n' ;;
 
 ;;
 ## Catch-all procs
@@ -1728,17 +1641,17 @@ Additionally, grouping a single value allows to "escape" symbols in calls:
   case.(some_value).{<cases>}
 ;;
 
-add2 (X + Y) ;; Declaration. ;;
-10 .add2. 20 ;; Usage. ;;
+add2 = (X + Y) ;; Declaration. ;;
+10 .add2. 20   ;; Usage. ;;
 
 ;; Declaration ;;
-join_paragraphs ("\n\n" .join. X)
+join_paragraphs = ("\n\n" .join. X)
 
 ;; Usage ;;
 join_paragraphs.[`one` `two` `three`]
 
 ;; Makes for a nicer "hello" program: ;;
-main (log.`hello_world`)
+main = (log.`hello_world`)
 
 ;;
 One really nice thing about proc-only delimiters
@@ -1755,7 +1668,7 @@ like in the "hello" example above.
 The following evaluates a block and returns its evaluated scope as a
 struct with the fields `one` and `two`:
 ;;
-do.(
+struct.(
   one = 10
   two = 20
 )
@@ -2050,7 +1963,7 @@ between arbitrary types. The use cases are endless:
 - Implicitly converting strings to file path constructs. Constant values should
   be parsed at comtime in release builds.
 - Parsing embedded SQL at comtime in release builds.
-- Implicitly converting `String -> Rune`, which saves on syntax.
+- Implicitly converting `Str -> Rune`, which saves on syntax.
 - Implicitly converting constant lists to sets at comtime.
 
 ### Implicit vs explicit typing
@@ -2370,7 +2283,7 @@ every union auto-implements every trait implemented by all member types.
 The language should provide convenient ways of annotating errors.
 For example (semi-pseudocode):
 ;;
-get_person fn.{
+get_person = fn.{
   X Person_id
   Z Person
   Z (
@@ -2456,60 +2369,51 @@ In blocks, we could borrow Haskell's syntactic approach, using a hypothetical
 compile-time operator `::` which defines `S -> P`.
 
 In structs, a field pragma is simply a field overload with the `Pragma` type.
-If [#modules_are_structs], this also applies to module root.
 
 Since typing `Pragma` everywhere is tiring, we could alias it to `::`.
 ;;
 
-;; Simplest case: one boolean modifier. Block scope. ;;
+;; Simplest case: one boolean modifier. ;;
 Some_type :: pub
 Some_type = struct.{}
 
-;; Same but in struct / module scope. ;;
-Some_type ::.pub
-Some_type struct.{}
-
 ;; Same as above, but using the type name instead of `::`. ;;
-Some_type Pragma.pub
+Some_type = Pragma.pub
 
-;; Simple case: list of boolean modifiers. Block scope. ;;
+;; Simple case: list of boolean modifiers. ;;
 some_proc :: [pub inline]
 some_proc = fn.(<some_code>)
 
-;; Same but in struct / module scope. ;;
-some_proc ::.[pub inline]
-some_proc fn.(<some_code>)
-
 ;; More complex case: parametrized modifiers. ;;
-Some_type ::.[derive.Debug derive.Show json.camel]
-Some_type struct.{}
+Some_type :: [derive.Debug derive.Show json.camel]
+Some_type = struct.{}
 
 ;; Optional key-value approach for more complex cases. ;;
-Some_type ::.{
+Some_type :: {
   pub         true
   json_fields json.camel
   sql_fields  sql.snake
 }
-Some_type struct.{}
+Some_type = struct.{}
 
 ;; It should be possible to reuse pragmas. ;;
-Model ::.{
+Model = Pragma.{
   pub         true
   derive      [derive.Debug derive.Show]
   json_fields json.camel
   sql_fields  sql.snake
 }
 
-;; Splurge the `Model` pragma. ;;
-Person ::.{* Model}
-Person struct.{
+;; Reuse the `Model` pragma. ;;
+Person = Model
+Person = struct.{
   id   Uuid
   name string
 }
 
-;; Splurge the `Model` pragma. ;;
-Session ::.{* Model}
-Session struct.{
+;; Reuse the `Model` pragma. ;;
+Session = Model
+Session = struct.{
   id        Uuid
   person_id Uuid
 }
@@ -2520,42 +2424,21 @@ val = 123
 
 ;; The `=` operator could support the following instead: ;;
 (val Int mut) = 123
+(INDENT Str pub mut synchronized) = `  `
 
 ;; Module-level and scope-level pragmas are anonymous: ;;
-_ ::.{
+_ = ::.{
   vis `package`             ;; Visible only in current package. ;;
   pub [Some_type some_proc] ;; Declare exports in one place. ;;
 }
-
-;; Module-level mutable field. ;;
-INDENT ::.[pub mut synchronized]
-INDENT `  `
-
-;;
-In module and struct fields, we could choose to support complex LHS
-with inline pragmas:
-;;
-(INDENT String pub mut synchronized) `  `
-
-;;
-Maybe in structs and module root, the `::` pseudo-field could be used for
-struct-level and module-level pragmas by default. This puts `::` in scope as
-a value of the type `Pragma`, but should not interfere with the use of the
-regular `::` (alias for `Pragma`) in the same scope, because of proc overload
-resolution. Or simply because it's a special case in the compiler.
-;;
-
-;; Module-level pragma: ;;
-:: {
-  vis `package`
-  pub [Some_type some_proc]
-}
-
-;; Struct-level pragma: ;;
-Some_type struct.{
-  ::         pub ;; Type and fields are public. ;;
+Some_type = struct.{
+  _          ::.pub ;; Type and fields are public. ;;
   some_field Int
 }
+
+;; Module-level mutable field. ;;
+INDENT :: [pub mut synchronized]
+INDENT `  `
 
 ;;
 Offtopic; move to a [#types] section later.
@@ -2563,20 +2446,20 @@ Structs should be able to "inherit" by splurging.
 This is similar to struct embedding in Go.
 ;;
 Ided struct.{id Uuid}
-Named struct.{name String}
+Named struct.{name Str}
 Timed struct.{created_at Time updated_at Time}
 Person struct.{
   *     Ided
   *     Named
   *     Timed
-  email String
+  email Str
 }
 
 ;;
 (Offtopic continued.)
 Unlike in Go, splurged fields should be usable at the top level in literals:
 ;;
-person Person.{
+person = Person.{
   id   some_uuid
   name `some_name`
 }
