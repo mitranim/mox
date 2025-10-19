@@ -241,43 +241,51 @@ supports newlines, but not escapes: \t \n
 ;;
 ## Symbols
 
-Symbols are sequences of unquoted characters, and may include
-most of the printable non-whitespace ASCII characters:
+Symbols fall into three non-overlapping categories:
+- Alphanumeric identifiers.
+- Operator.
+- Accessor.
+
+Alphanumeric identifier characters:
 
   ABCDEFGHIJKLMNOPQRSTUVWXYZ
   abcdefghijklmnopqrstuvwxyz
   0123456789
-  ~ ! @ # $ % ^ & * : < > ? / \ | = + - _ .
+  _
 
-The set of allowed "operator-like" characters is likely to be extended later.
+Operator characters:
 
-A symbol can never begin with a decimal digit.
+  ~ ! @ # $ % ^ & * : < > ? / \ | = + - _
 
-The dot `.` is special: it terminates symbols. A leading dot takes precedence
-over a trailing dot. Additionally, the restriction of not starting with a
-decimal digit also applies after a dot, allowing numbers in dot-chains:
+Dot:
 
-  one.two         -- Parsed like `one .two`
-  one.two.three   -- Parsed like `one .two .three`
-  one.123.two     -- Parsed like `one. 123 .two`
-  one.123.456.two -- Parsed like `one. 123.456 two`
+  .
 
-We distinguish "identifier characters" and "operator characters", but at the
-base level of the data notation, symbols may contain arbitrary mixtures of
-these characters. Distinct adjacent symbols must be separated by whitespace:
+All three are considered symbols, but they are "split" at the boundaries.
+Thus, the following two lines are parsed identically:
 
-  - -- --- + ++ +++ = == === -- Distinct symbols.
-  one+two                    -- Parsed as one symbol.
-  one + two                  -- Parsed as three symbols.
-  10+20+30                   -- Parsed as `10 +20 +30`: num, sym, sym.
-  10 + 20 + 30               -- Parsed as num, sym, num, sym, num.
+  one.two+three
+  one . two + three
 
-Specialized dialects may define additional restrictions
-on the mixing of "identifier" and "operator" characters.
+Additionally, alphanumeric identifiers may not begin with decimal digits.
+Any non-whitespace sequence starting with `\d` must be a valid numeric
+literal. See the section on numbers. Note that numeric literals may be
+immediately followed by any supported non-letter character.
 
-The base level of notation doesn't define any meaning for any symbols.
-In practice, data decoders and encoders would use a slightly higher level
-specialization of the notation, closer to JSON, with support for the values
+The set of allowed operator characters may be extended later.
+
+The notation does not define any "known" operators other than the dot, and
+expects languages defined in terms of the notation to allow definitions of
+arbitrary operators in addition to the common ones. This also means that
+operators can never be co-adjacent: trying to colocate `~-` or `!!` would
+parse those as a single symbol each. Adjacent operators, if supported,
+must be separated by whitespace(or comments):
+
+  ~ - 10
+
+Despite this categorization, the notation does not define the meaning of any
+identifiers or operators, or the dot. In practice, data decoders and encoders
+would use a specialized dialect, closer to JSON, with support for the values
 `nil` `false` `true` and dictionaries via `{}`.
 ;;
 
@@ -302,7 +310,7 @@ Languages are free to choose their own. The syntax highlighting for this
 format should not attempt to detect "calls", leaving this to specific
 languages.
 
-That said, the actual language does have a specific call notation.
+That said, the planned language does have a specific call notation.
 See `./lang.mox`.
 ;;
 

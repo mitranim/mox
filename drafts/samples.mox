@@ -3,15 +3,7 @@
 
 Traditional:
 ;;
-main = fn.(
-  log.`hello world!`
-)
-
-;; Two expressions. ;;
-main = fn.(
-  msg = `hello world!`
-  log.(msg)
-)
+main = () -> log.`hello world!`
 
 ;;
 ## Fibonacci sequence
@@ -27,74 +19,53 @@ Example definition.
 Easiest to understand: a recursive version incompatible with tail-call
 optimization. See below for a non-stack-overflowing version.
 ;;
-fib = fn.(
-  (X <= 1)
-    ? X
-    : fib.(X - 1) + fib.(X - 2)
-)
+fib = num -> (num <= 1)
+  ? num
+  ! fib.(num - 1) + fib.(num - 2)
 
 ;;
 Procedural non-recursive version.
 Translated from bot-generated Python.
 Can probably be greatly simplified.
 ;;
-fib = fn.(
-  ;;
-  `X` refers to the first input.
-  This proc is automatically unary because it doesn't access `Y`.
-  ;;
-  src = X
-
+fib = num -> (
   ;; Return if nothing to do. ;;
-  (src <= 1) ? ret.(src)
+  (num <= 1) ? ret.(num)
 
-  mod = 0
-  out = 1
-  ind = 2
+  mut : mod = 0
+  mut : out = 1
+  mut : ind = 2
 
-  while.(ind <= src).(
-    ;;
-    Reassignment with inline list destructuring.
-    The reassignment operator `=:` is provisional / TBD.
-    ;;
-    [mod out] =: [out (mod + out)]
-    ind =+ 1
+  while.(ind <= num).(
+    ;; Reassignment with inline list destructuring. ;;
+    [mod out] <- [out (mod + out)]
+    ind       <- ind + 1
   )
   out
 )
 
 ;;
-Public interface which takes one number `X`
+Public interface which takes one number
 and calls an internal implementation.
 ;;
-fib = fn.(fib_internal.[X 0 1])
-
-;; Might end up with arrow procs too. ;;
-fib = num -> fib_internal.[num 0 1]
+pub : fib = num -> fib_internal.[num 0 1]
 
 ;; Uses recursion and assumes TCO (tail-call optimization). ;;
-fib_internal = fn.{
-  X [3 Uint]
-  Z Uint
-  Z (
-    ;; destructure ;;
-    [A B C] = X
-    (A <= 1) ? A : fib_internal.[(A - 1) C (B + C)]
-  )
+fib_internal = [A B C] ->
+  (A <= 1)
+  ? A
+  ! fib_internal.[(A - 1) C (B + C)]
 
-  ;;
-  Since TCO is error-prone, the language may provide a pragma for validating
-  that a given proc is TCO-compatible. See [#pragmas] in the lang doc.
-  ;;
-  :: tco
-}
-
-fib_internal :: tco
-fib_internal = fn.[
-  [3 Uint] -> Uint
-  [A B C] = X
-  (A <= 1) ? A : fib_internal.[(A - 1) C (B + C)]
-]
+;;
+With a type signature pragma, and a TCO pragma. Since TCO is error-prone,
+the language may provide a pragma for validating that a given proc is
+TCO-compatible. See [#pragmas] in the lang doc.
+;;
+(Uint.Arr.3 -> Uint) : tco :
+fib_internal = [A B C] ->
+  (A <= 1)
+  ? A
+  ! fib_internal.[(A - 1) C (B + C)]
 
 ;;
 ## Conditional compilation
@@ -103,16 +74,14 @@ Essential for targeting different platforms with the same code.
 
 Syntax is TBD.
 ;;
-when.(compiler.target_os == `linux`).(
-  do_one_thing
-)
-when.(compiler.target_os == `xnu`).(
-  do_another_thing
-)
-compiler.case.(compiler.target_os).{
-  `linux`  do_one_thing
-  `darwin` do_another_thing
-}
+(compiler.os == `linux`) & (compiler.arch = `x86`) #->
+SYSCALL_READ = 3
+
+(compiler.os == `linux`) & (compiler.arch = `x64`) #->
+SYSCALL_READ = 0
+
+(compiler.os == `linux`) & (compiler.arch = `arm64`) #->
+SYSCALL_READ = 63 ;; 🤯 ;;
 
 ;;
 ## Subclasses and methods
@@ -133,42 +102,36 @@ We might be able to do this with pragmas. Noisy but rarely needed.
 
 Some_elem = HTMLElement.subclass
 
-connectedCallback :: Some_elem.method
-connectedCallback = fn.(;; Initialize. ;;)
+Some_elem.method :
+connectedCallback = this -> <some_initialization>
 
-disconnectedCallback :: Some_elem.method
-disconnectedCallback = fn.(;; Deinitialize. ;;)
+Some_elem.method :
+disconnectedCallback = this -> <some_deinitialization>
 
 ;; Library code should also be able to invent more specialized "syntax": ;;
 Some_elem = HTMLElement.subclass.{
   prototype {
-    connectedCallback    fn.(;; Initialize. ;;)
-    disconnectedCallback fn.(;; Deinitialize. ;;)
+    connectedCallback    this -> <some_initialization>
+    disconnectedCallback this -> <some_deinitialization>
   }
 }
 
 ;; Non-callbacks don't need any of that, and would be regular procs: ;;
-init = fn.{
-  X Some_elem
-  Y {
-    id  Str
-    cls Str
-  }
-  Z (
-    X.id = id
-    X.cls = cls
-    X
-  )
-}
+init = (this = Some_elem) -> {id = Str cls = Str} -> (
+  this.id = id
+  this.cls = cls
+  this
+)
 
-Some_elem.new.init.{id `some_id` cls `some_cls`}
+Some_elem.init.{id = `some_id` cls = `some_cls`}
 
 ;;
 Custom DOM elements need registration. Web frameworks do this with decorators,
 which correspond to our pragmas. It's actually possible to register implicitly,
 so this is just for demonstration purposes.
 ;;
-Some_elem :: custom_elem.`some-elem`
+custom_elem.`some-elem` :
+Some_elem = <definition>
 
 ;;
 ## JS
@@ -177,22 +140,13 @@ When targeting JS, we need the ability to import JS code
 and declare what's there.
 ;;
 some_lib = import.{
-  src  `./some_lib.mjs`
-  type `js`
-  sym {
-    SOME_CONST Int
-    proc0      Int -> Int
-    proc1      [Int Str Bool] -> Dict
-    proc2      {one Int two Str} -> {three Bool four List}
-
-    ;;
-    Alternative proc type syntax. This is probably preferred because
-    `->` is difficult for syntax highlighters in complex cases.
-    Spacing may or may not be required depending on how we handle this.
-    ;;
-    proc0 fn. Int. Int
-    proc1 fn. [Int Str Bool]. Dict
-    proc2 fn. {one Int two Str}. {three Bool four List}
+  src  = `./some_lib.mjs`
+  type = `js`
+  decl = {
+    SOME_CONST = Int
+    proc0      = Int -> Int
+    proc1      = [Int Str Bool] -> Dict
+    proc2      = {one = Int two = Str} -> {three = Bool four = List}
   }
 }
 
@@ -204,13 +158,16 @@ _ = proc0.123
 _ = proc1.[123 `str` true]
 
 ;; Destructure by listing field names. ;;
-(three four) = proc2.{one 123 two `str`}
+(three four) = proc2.{one = 123 two = `str`}
 
 ;; Destructure with alternative local names. ;;
 {
-  three local_var_0
-  four  local_var_1
-} = proc2.{one 123 two `str`}
+  local_var_0 = three
+  local_var_1 = four
+} = proc2.{
+  one = 123
+  two = `str`
+}
 
 ;;
 ## Markup
@@ -235,11 +192,11 @@ markup below.
 ;;
 H = import.`std:html`
 
-H.html.{lang `en`}.[
+H.html.{lang = `en`}.[
   H.head.[
-    H.meta.{charset `utf-8`}
+    H.meta.{charset = `utf-8`}
     H.title.`sample_website`
-    H.link.{rel `stylesheet` href `/main.css`}
+    H.link.{rel = `stylesheet` href = `/main.css`}
   ]
   H.body.[
     H.p.`hello world!`
@@ -258,7 +215,10 @@ H = struct.(
   Overriding a proc should affect all procs using it.
   With this override, every value will be rendered in its "repr" form.
   ;;
-  render_text = fn.(X.repr)
+  render_text = val -> val.repr
+
+  ;; Or maybe this: ;;
+  render_text = repr
 )
 
 ;;

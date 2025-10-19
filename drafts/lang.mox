@@ -19,7 +19,7 @@ in production you will AOT compile, and you should be able to simply import the
 compiler to load plugins and mods at app runtime, and JIT + link them against
 your program to run at native speed. Baffling that no major language does this
 natively. (Dylib hacks are neither native nor ergonomic.) This JIT focus should
-also make it self-bootstrappable.
+also make it almost self-bootstrappable.
 
 It's kinda like saying that the compiler core should be small and fixed, and
 modules should be able to plug into the compiler on the fly, modify behaviors
@@ -44,10 +44,13 @@ Many, many programming languages. Non-exhaustive list, ordered aesthetically:
 - Odin
 - Rust
 - Swift
+- Forth
+- POP-11
 - Erlang
 - Haskell
 - Smalltalk
 - Red / Rebol
+- Lambda calculus
 - Clojure and other Lisps
 - https://paulgraham.com/hundred.html
 
@@ -86,12 +89,13 @@ In short, it supports:
 - Symbols
 - Structures: () [] {} (distinct types)
 
-Notable differences from Clojure's AST types:
+Notable differences from Clojure's EDN and AST:
 - No support for `:keyword` symbols.
 - No support for reader macros. (Don't need them.)
 - Symbols are second-class and not intended for runtime use by apps.
-- While {} is always used for key-value mapping, it's initially
-  parsed as a list, because we use duplicate keys for overloads.
+- While {} is always used for key-value mapping, it might actually be
+  parsed as a list, if we end up using duplicate keys for overloads.
+- {} grudgingly requires `=` in key-values; see [#structs] below.
 
 Delimiter purposes:
 - () is for app-compile-time sequences: blocks, groups, maybe tuples.
@@ -99,8 +103,10 @@ Delimiter purposes:
 - {} is for dicts and structs.
 
 The AST won't be homoiconic; Clojure achieved it by wasting memory, as is the
-JVM way. That said, we're spiritually close to homoiconic languages, by virtue
-of defining the "syntax" of the language in terms of data structures, not text.
+JVM way; it reserves a metadata field in a hefty variety of built-in data
+structures. That said, we _are_ spiritually close to homoiconic languages, by
+virtue of defining the "syntax" of the language in terms of data structures,
+not text.
 
 Describing a language in a simple, fixed data notation, and avoiding keywords,
 is an extremely powerful idea which greatly simplifies the syntax, parsing, and
@@ -111,7 +117,8 @@ The data notation syntax is fixed. The parser is implemented once. Users learn
 the notation, and _think_ of language features in terms of data. When adding
 new language features, even ones very syntactically distinct, we define them in
 terms of existing data nodes, with no changes to the parser. Users also learn
-new features in terms of data.
+new features in terms of data. Though we aim to make the compiler extensible
+on the fly, the AST and expression structure is the one unbendable rule.
 
 In one sense, the syntax of the language is frozen forever. In another sense,
 the syntax is infinitely flexible, because our data notation can represent a
@@ -138,9 +145,9 @@ distinct concepts. Glancing at a code should vaguely tell you the shape
 of the control flow. Declarations should be readily distinguishable from
 usage. Sequences should be distinguishable from key-value maps at a glance.
 
-However, _like_ Lisps, we aim to define these syntactic constructs entirely
-in library code. They are not part of the data notation, and the compiler
-core should have no knowledge of them.
+However, _like_ Lisps, we aim to define special "syntactic" constructs entirely
+in library code. They are not part of the data notation, and the compiler core
+should have no knowledge of them.
 ;;
 
 ;; Symbols ;;
@@ -155,14 +162,14 @@ some_identifier
 
 ;; Struct literal (contextual) ;;
 {
-  one 10
-  two 20
+  one = 10
+  two = 20
 }
 
 ;; Dict literal (contextual) ;;
 {
-  `one` 10
-  `two` 20
+  `one` = 10
+  `two` = 20
 }
 
 ;;
@@ -199,11 +206,21 @@ This is just a rough sketch:
 - Some way of defining types.
 - Some way of defining functions, or at least runnable code.
 - Compile-time execution of arbitrary code.
-  - Initially interpreted, but eventually we want a tiered JIT.
+  - Cold code should be interpreted (faster for run-once code).
+  - Hot code should be JIT-compiled.
 
-The compiler also gives us access to its runtime state, which includes the
-AST. The types are defined in standard library code and match the runtime
-structures "by accident" (but also by design).
+The compiler gives us access to its runtime state, which includes the AST,
+scopes, type information, and more. The compiler provides a special
+pseudo-module which gives programs access to the state and definitions.
+Furthermore, the compiler provides ways of _manipulating_ its state, and
+extend it with new behaviors, effectively scripting it with plugins.
+
+The compiler allows us to mark arbitrary procedures, or rather arbitrary names
+referring to procedures, as "immediate". When the compiler encounters calls to
+those procedures, it invokes them immediately. The inputs are either AST nodes
+or static values, depending on a procedure's definition, as well as additional
+context for that location in the code, such as current scope, expected types,
+and more.
 
 The core type-definition primitive provided by the compiler could be just
 "a chunk of memory with N bytes". This might be sufficient for the stdlib,
@@ -224,11 +241,13 @@ In summary:
 ;;
 
 ;;
-### Compile-time procs
+### Immediate procs
 
-TLDR: aim to support arbitrary compile-time computations; "comtime" for short.
+TLDR: aim to support arbitrary compile-time computations via immediate procs.
+This is also known as "comptime" / "static" / "constant" / "comtime", etc.
+The opposite term is "deferred" / "runtime" / "execution time".
 
-Compile-time / comtime procs have many use cases:
+Immediate procs have many use cases:
 - Manipulating AST / scope / compiler state / etc.
 - Pre-calculating constant values.
 - Enabling conditional compilation.
@@ -240,29 +259,31 @@ and tends to be used for syntactic features.
 The second group is useful for precalculating constant values
 at compile time to avoid the cost at program execution time.
 
-For any proc declaration, it should be possible to mark it for automatic
-comtime execution. Calling that proc causes the compiler to invoke it
-during compilation. The inputs have to be "constant", as in, available at
-compile time.
+For any proc declaration, it should be possible to make it "immediate", marking
+it for automatic immediate compile-time execution. Any call to that proc is
+invoked by the compiler immediately during compilation. The inputs have to
+be fully available at compile time; this means they can be either AST nodes,
+or regular types defined by the language, but constant: either literal, or
+computable by calling other procs at compile time.
 
-In comtime procs which manipulate the program itself ("macros"), it should
+In immediate procs which manipulate the program itself ("macros"), it should
 be possible to access any part of the compiler state, as well as the local
 context: operands as AST nodes, local scope, and so on.
 
-It should also be possible to decide at a callsite when to run a given
-expression. The language should provide a proc that takes an expression
-and runs it at compile time, storing the constant result in the executable.
-This is similar to `static` in Nim.
+It should also be possible to decide at any callsite when to run a given
+expression, by marking that expression as "immediate". The compiler computes
+the whole expression, invoking every proc at compile time, and stores the
+constant result. This is similar to `static` in Nim.
 
-Compile-time computations have a cost. When iterating on a program, users
-shouldn't have to sit through repeated recalculations of values which might
-not even be used. It should be possible to make this conditional. Some proc
-declarations or callsites could specify that the given computation is
-compile-time in release builds, but execution-time in dev / debug builds.
-Semantics should be preserved: such execution-time computations should be
-memoized and not repeated. It seems likely that memoized execution-time
-computations should be the preferred default for dev / debug builds, since
-this reduces waiting time while keeping the total computation time similar.
+Immediate execution has a compile-time cost. When iterating on a program,
+developers shouldn't have to sit through repeated recalculations of values
+which might not even be used. It should be possible to make this conditional.
+Some proc declarations or callsites could specify that the given computation
+is immediate in release builds, but deferred (runtime) in dev / debug builds.
+Semantics should be preserved: such immediate computations should be memoized
+and not repeated. It seems likely that memoized runtime computations should be
+the preferred default for dev / debug builds, since this reduces waiting time
+while keeping the total computation time similar.
 
 One example of the usefulness of arbitrary compile-time computations is
 converting a constant string into a regex state machine. In Go, this can
@@ -280,165 +301,667 @@ Another use case is conversion between structure formats. For example, since
 Haskell doesn't have dict / map literals, Haskell maps are constructed via
 `fromList [(key, val), (key, val)]` at a runtime cost. The cost could in
 principle be eliminated by special-casing this in the compiler, but any
-self-respecting language should make it possible for external libraries
-to do that on their own.
+self-respecting language should make it possible for library code, outside
+of the compiler core, to do that.
 ;;
 
 ;;
-## Procs and calls
+## Proc arity and call syntax
 
-Many languages have "operators", "functions", and "methods" as distinct
-concepts. We unify them into one. This document calls them "procs" for
+Many languages have "operators", "functions", "methods", and "struct fields" as
+distinct concepts. We unify them into one. This document calls them "procs" for
 brevity. The name is not important.
 
-The description below is conceptual, not syntactic.
-Tentative syntax for proc definitions and calls is shown later.
+We also unify arities and generalize proc inputs. Many languages pretend to have
+different arities for procs. Usually, what this _really_ means is that every
+proc takes one input which is a heterogeneous tuple, and you can never pass
+a _non-tuple_ as an input to any procedure.
 
-There are only 2 proc arities: unary `X -> Z` and binary `X Y -> Z`.
+Some languages support returning "multiple values" from a procedure.
+Just like "multiple inputs" are in fact a heterogeneous tuple, the notion
+of "multiple return parameters" is also simply a heterogeneous tuple.
 
-Homogeneous variadic calls use inline lists:
+We unify these concepts. There is exactly one proc arity: unary. Every proc
+takes one input and returns one output. We picture this with `A -> B`.
+The input `A` and output `B` may be of any type, not just tuples!
 
-  some_proc.[10 20 30]
+We have three call syntaxes:
+- Nullary evaluation
+- Unary invocation via `.`
+- Binary invocation via operators
 
-Heterogeneous calls use inline structs:
+Implicit nullary evaluation is distinct from explicit nullary calls
+present in other languages. See [#nullary_evaluation] below.
 
-  some_proc.{one 10 two 20}
+We have the following call patterns, which are explained below.
+`S` stands for a hardcoded literal symbol, while `A B C` stand
+for arbitrary input and output types.
 
-In proc declarations, the name is optional. There are 6 proc patterns and
-4 declaration patterns, listed below. They're used throughout the rest of
-this document. X Y Z stand for arbitrary types, and S stands for a static,
-hardcoded symbol.
+  S     -> A
+  A     -> B
+  A . S -> B
+  S . A -> B
+  A . B -> C
+  A S B -> C    -- Where `S` must be an operator.
 
-  X     -> Z
-  S     -> Z
-  X S   -> Z
-  X Y   -> Z
-  S X   -> Z
-  X S Y -> Z
+The call syntaxes pictured below aim to satisfy specific requirements:
+- Support several ordering styles:
+  - Unary `A S` (postfix, required for field getters).
+  - Unary `S A` (prefix, required for sanity reasons).
+  - Unary `A B` (not required, but comes out of `S A`).
+  - Binary `A S B` (required for operator chaining).
+  - Allow using `S` in any position when unambiguous.
+- Easy to type.
+- Light appearance.
+- Avoid having to separate atomic tokens with `,` or `;`. The following must
+  be valid syntax for a list with 3 elements: `[one two three]`. Our data
+  notation forbids `,` and `;`, making this a hard requirement.
+- Totally unambiguous; calls must be visually clear without hidden context,
+  such what the types are, or what is the proc arity. This makes correct
+  syntax highlighting of calls possible (in stark contrast with Rebol).
 
-The pattern `X -> Z` is the type of an unary proc. To actually call such a
-proc, it needs to be associated with a name. See `S X -> Z` below. Also see
-[#first_class_procs] for more details.
+So here's the current plan. In these examples, `?` stands for any operator.
+The dot is special. Whitespace is ignored.
+- Operator binary infix: `arg_0 ? arg_1`
+- Operator unary postfix: `arg_name.?`
+- Operator unary prefix: `?.arg_name`
+- Identifier unary postfix: `arg_name.proc_name`
+- Identifier unary prefix: `proc_name.(arg_name)`
 
-The pattern `S -> Z`, where S is a static symbol, accesses the value bound to
-the name S in the current scope. See [#variables] for additional details.
+The big deal (really!) is we don't need the `:,;` separators / joiners in
+_other_ parts of the code, such as literal data structures:
 
-The pattern `X S -> Z`, where S is a static symbol, is intended for struct
-field getters. Conceptually, reading a struct field is equivalent to calling
-a proc which returns data at the field's offset, and setting a field is
-equivalent to calling a proc which writes at that offset. This is done with
-1-3 assembly instructions depending on the architecture and use case, but
-conceptually, this is still a proc. See [#struct_fields] for details.
+  [10 20 30]
+
+  [
+    10 + 20    -- elem 0
+    30 + 40    -- elem 1
+    50 + 60    -- elem 2
+  ]
+
+When rapidly writing and editing code, the cost of separators / joiners adds up
+real fast. Most programmers seem to be oblivious to this. My hypothesis is that
+most folks either haven't been spoiled by languages without this issue, or
+haven't paid enough attention to how much time is wasted fixing typos involving
+these characters.
+
+Like Lisps, we use the same call syntax for runtime and compile-time procs.
+Our heavy reliance on implementing language features as immediate procs makes
+this unavoidable. Immediacy is attached to proc declarations.
+
+We support infix and postfix because many complex expressions, such as long
+data transformation pipelines, are nicer to write in a chainable style.
+
+Some languages, notably Lisps, have only the prefix call notation, and end up
+inventing pipeline macros, such as Clojure's `->` and `->>`. Users end up
+having to convert code between two styles when adding or removing steps.
+Having native infix and postfix spares us from that.
+;;
+
+;;
+### Unary calls
+
+Unary calls involve the special operator `.`, which is binary, with a higher
+precedence than other infix operators. It allows the following call patterns
+(whitespace-insensitive):
+
+  S.S -> A
+  A.S -> B
+  S.A -> B
+  A.B -> C
+
+This is the only unary call syntax we support.
+
+The pattern `S.S -> A` means: both operands are literal symbols, the LHS
+references the input, the RHS references a named procedure applicable to
+this input type.
+
+The patterns `A.S -> B` and `S.A -> B` mean: `S` is a literal symbol, which
+references a procedure of the type `A -> B`.
+
+The pattern `A.S -> B` also represents namespacing. It allows for struct field
+getters and module namespacing with a single mechanism. A field is essentially
+a reference to that field's address. Reading a field dereferences the address.
+Writing a field stores a value at that address. Since we intend to conceptually
+unify modules with structs (see [#structs_are_modules]), the same mechanism
+works for procs and vars namespaced via modules. See also: [#struct_fields],
+[#variables], [#refs].
 
 The unification of fields and procs allows switching between built-in plain
-getters and custom getters with no refactoring. Many languages frown upon
-this feature due to hidden costs, but in our design this is hard to avoid.
+field getters and custom procedural getters with no refactoring.
 
-The pattern `X Y -> Z` is the type of a binary proc. When bound to `X S Y`
-in the current scope, it can be called as `X S Y -> Z`. When anonymously
-declared in the current scope, it makes X callable with Y. Any type can be
-made callable this way. However, because such calls tend to be illegible,
-this should be mostly avoided.
+The pattern `A.B -> C` means: the current scope must have an _anonymous_
+procedure of the type `A -> B -> C`, which takes an operand `A` and returns a
+procedure `B -> C`. This makes any value of type `A` callable with a value of
+type `B`. Any type can be made "callable" this way. However, because such calls
+tend to be illegible, this should be mostly avoided. We may end up not
+supporting this at all.
 
-The pattern `S X -> Z`, where S is a static symbol, invokes a proc `X -> Z`
-bound to `S X` in the current scope. This is used for unary procs declared in
-module root and inside structs. See [#first_class_procs]. We may also end up
-using it for reassigning variables. See [#variables] and [#struct_field].
+Partial application of `A -> B -> C` involves returning a closure. Since we aim
+for speed, such closures need to be either entirely avoided in machine code, or
+stack-allocated, similarly to inline closures in Rust, C++, and C extensions.
 
-The pattern `X S Y -> Z`, where S is a static symbol, invokes a binary proc
-bound to `X S Y` in the current scope. This document uses the infix notation
-for such calls. We may end up using this for modifying struct fields, but see
-[#struct_fields] for some notes.
+Example unary calls (with an intermediary `.` binary call).
+All are whitespace-insensitive.
+;;
+some_struct.some_field ;; Field ref; see [#refs]. ;;
+some_int.to_string     ;; Integer to ASCII. ;;
+to_string.(some_int)   ;; Integer to ASCII; grouping "escapes" a symbol. ;;
+to_string.123          ;; Integer to ASCII. ;;
+some_string.len        ;; Byte count or Unicode grapheme count. ;;
+`some_string`.len      ;; Byte count or Unicode grapheme count. ;;
+len.`some_string`      ;; Byte count or Unicode grapheme count. ;;
+some_string.10         ;; Get byte at index 10. ;;
+some_string.(ind)      ;; Get byte at index `ind`. ;;
+`some_string`.10       ;; Get byte at index 10. ;;
+log.`some_string`      ;; Print string. ;;
+`some_string`.log      ;; Print string. ;;
+log.(some_string)      ;; Print some string. ;;
+log.[10 20 30]         ;; Print multiple numbers. ;;
+
+;;
+This syntax is also used for unary operators.
+Without a dot, operators are binary; see below.
+;;
+some_bool.! ;; Boolean negation. ;;
+some_num.-  ;; Numeric negation. ;;
+some_var.&  ;; Taking a reference. ;;
+some_ref.*  ;; Dereferencing. ;;
+
+;;
+Void procs, like `void(void)` in C, are actually `Nil -> Nil`.
+They're invoked by passing nil:
+;;
+some_void_proc.()
+nil.some_void_proc
+
+;;
+### Complex inputs and outputs
+
+For complex inputs-outputs, we encourage _structures_. Complex homogeneous
+inputs are represented with arrays or lists. Complex heterogeneous inputs
+are represented with inline anonymous structs, known as named parameters
+and named arguments. See the section [#named_parameters]. Ditto for outputs.
+;;
+
+;; Homogeneous structured input (list): ;;
+some_proc.[10 20 30]
+
+;; Heterogeneous structured input (struct): ;;
+some_proc.{
+  one = 10
+  two = `some_string`
+}
+
+;;
+### Binary infix calls
+
+Symbols which look like operators (see `./data_notation.mox`)
+are used for binary infix calls:
+
+  10 + 20
+
+Some special rules:
+- The dot takes precedence: `10.-` is an unary call (returning `-10`).
+- "Grouping" an operator takes its value: `(+)` is a proc value.
+
+The grouping rule is very similar to Haskell. However, unlike Haskell,
+we don't need to support grouped _unary_ operators such as `(- num)`,
+since the dot does that already: `num.-`.
+
+Operator symbols (see `./data_notation.mox`) not adjacent to dots, and not
+grouped in parentheses, are always binary infix calls. Since all procs are
+actually unary, this requires the following application order:
+- Operator must refer to proc with type `A -> B -> C`.
+- Apply to left operand, returning `B -> C` (inlined closure).
+- Apply to right operand, returning `C`.
 ;;
 
 ;;
-### Variables
+### Precedence
 
-Conceptually, `S -> Z` exists, where S is a static symbol. This is just
-regular variable access. Similarly, `S X -> Z` sets a variable's value,
-returning the previous value; X and Z are the same type.
+This is subject to revision, but here are
+the planned precedence levels and rules:
 
-Later in this document we discuss how scopes are really just structs.
-Taking both ideas together, we can eliminate the concept of "variables"
-and replace them with struct fields and procs.
+- 0 -- dot operator `.`
+- 1 -- pragma operator `:`
+- 2 -- most operators
+- 3 -- proc operator `->`
+- 4 -- assignment operators such as `=`
 
-We could even support overloading `S -> Z` and `S X -> Z`. User code could
-insert custom logic into variable access for a given scope. Could be useful
-for embedded DSLs.
+Newly declared operators get precedence level 2 by default.
+We also make it possible to change the level with a pragma,
+but only the dot can be at level 0. We may end up expanding
+the set of levels in the future; assignment operators will
+always have the lowest precedence.
 
-Given that taking a reference to a variable is a very common need, the Z in
-`S -> Z` is most likely `Ref A` where A is the variable's type. Any `Ref A`
-should automatically dereference to A where needed.
+The dot-0 rule is important for expression grouping, as having a different dot
+precedence would change how adjacent forms are grouped or not grouped into
+macro-expressions. The other precedence rules affect only internal grouping
+inside each macro-expression. This means they don't affect the separation of
+macro-expressions from each other.
 
-For comparison, Haskell unifies variables and nullary functions.
-This can only be done in a lazy language.
+Operators can be left- or right-associative. Left associativity is the default.
+Right associativity is opt-in, and used for a few built-ins.
+
+Arithmetic operators are likely to have the exact same precedence.
+See the code below. In many languages, it would become:
+
+  10 - (20 / 30) + (40 * 50)
+
+But here, it becomes:
+
+  (((10 - 20) / 30) + 40) * 50
+;;
+10 - 20 / 30 + 40 * 50
+
+;; Due to dot precedence, the following expressions are equivalent: ;;
+12.34 - 56.78 .trunc
+12.34 - (56.78.trunc)
+
+;; For unary calls on results of binary expressions, use grouping: ;;
+(12.34 - 56.78).trunc
+
+;; Or simply split up: ;;
+val = 12.34 - 56.78
+_   = val.trunc
+
+;;
+Our simple expression grouping rules allow to avoid
+element separator characters in list literals:
+;;
+[
+  10 + 20 ;; First expression = first element. ;;
+  30 + 40 ;; Second expression = second element. ;;
+]
+
+;;
+The same goes for dict literals, which are alternations of keys and values
+where values are arbitrary expressions. Because grouping is unambiguous,
+key-value pairs do not require separators:
+;;
+{
+  one = 10 + 20 ;; First field. ;;
+  two = 30 + 40 ;; Second field. ;;
+}
+
+;; The following is valid but discouraged: ;;
+(10.+).20               ;; use `10 + 20` ;;
+(one.=).((two.+).three) ;; use `one = (two + three)` ;;
+
+;;
+### Currying
+
+All "binary" procs, including all infix operators, are implemented in the
+Haskell curried style `A -> B -> C`, where the outer proc takes `A` and
+returns the inner proc `B -> C`. Thus, an infix call `10 + 20` is actually
+two calls: `(10.+).(20)`.
+
+This isn't limited to operators. Other common "binary" procs include:
+- Postfix transformation chaining: `list.filter.(not_zero).foldz.(+)`.
+- Interface conformance: `Self -> A -> B`.
+
+The example below assumes that the current scope has a certain proc bound to
+the symbol `map`, whose type is `A.List -> (A -> B) -> B.List`, with a generic
+implementation that works for any `A.List`.
+;;
+some_list.map.(val -> val * 2)
+
+;; Which is parsed equivalently to: ;;
+some_list . map . (val -> val * 2)
+
+;; ...And executed equivalently to: ;;
+(some_list.map).(val -> val * 2)
+
+;; Transformation chain: ;;
+some_list
+  .map.    (val -> val / 2)
+  .filter. (val -> val % 2)
+  .foldz.  (+)
+
+;;
+### Declaration and assignment
+
+All declarations and assignments are done with the operator `=`.
+This is used for constants / variables / struct fields / procs / types.
 ;;
 
-;; Reading a variable calls `S -> Z` ;;
-some_variable
+;; Identifier declarations are straightforward: ;;
+some_const = `some_val`
+some_proc = val -> val * 2
+Some_type = Int.typedef
+
+;; Declaring an "operator" requires "escaping" it with parens: ;;
+(!) = val -> val.not
+(**) = one -> two -> one.pow.(two)
 
 ;;
-Calling `S X -> Z` or `X S -> Z` for an S which is defined in the current
-scope reassigns that variable. This is tentative and subject to revision.
-We may define an assignment operator instead. Also see [#constants].
+By default, `=` declares constants. Mutability is declared by using the pragma
+`mut` on the declared symbol. Mutable variables can be reassigned by reference.
+See [#refs].
 ;;
-some_variable.`some_new_value`
-`some_new_value`.some_variable
+mut : some_var = 10
+some_var.& = 20
+some_var ;; 20 ;;
+
+;; Reassignment could use a dedicated operator if needed: ;;
+some_var <- 30
+
+;;
+Initializing to "zero" or using the default constructor,
+if any, is done by "assigning a type" to a variable:
+;;
+zero_int = Int
+zero_string = Str
+zero_struct = Some_struct
+
+;;
+While the operator `=` is likely to be intrinsically provided by the compiler,
+it is otherwise NOT a syntactic special case. It's simply a pre-declared
+operator marked as "immediate". Library or user code can define its own `=`,
+shadowing the built-in. We intend to define other assignment operators in
+standard library code, as immediate procs.
+
+Procs such as `=` follow the regular operator precedence rules, in accordance
+with their precedence and associativity. The example below also uses the pragma
+operator `:`, which is also an immediate proc provided by the compiler. See
+[#pragmas] below. Neither of these operators is a syntactic special case.
+;;
+
+;;
+## Proc declarations
+
+Proc syntax is provisional and subject to change. However, one thing is set in
+stone: the proc body is either an expression, or a group of expressions, where
+the last value is implicitly returned. Void procs take and return nil.
+
+If the type signature is not provided, the input and
+output types are inferred, similarly to Haskell.
+
+Types can be specified with the pragma operator `:`.
+See the section [#pragmas].
+
+The operator `->` can define proc type signatures _and_ proc implementations.
+Disambiguation rule: is the LHS ends with an Upper-titled symbol, that symbol
+must refer to a known type in scope, the RHS must also do so, and `->` returns
+a proc type signature. Otherwise, the LHS must end with a lower-titled symbol,
+which is a parameter name; the RHS is the proc body, and `->` returns a proc.
+
+The operator `->` is right-associative and has
+the second-lowest precedence, just above `=`.
+
+Unlike other languages, where such operators are syntactic special cases
+in the parser, we define all these operators as immediate procs, even when
+they're provided by the compiler rather than defined in library code.
+;;
+
+;; Proc type signatures: ;;
+Str -> Int
+Str -> Int -> Str
+Str -> Int -> Str -> Int
+
+;; Proc implementation: ;;
+double = val -> val * 2
+double.10
+
+;;
+Right associativity allows to chain `->` after each other.
+This defines a "binary" proc, which can be dot-chained:
+;;
+add2 = one -> two -> one + two
+10.add2.20
+
+;;
+Procs can be bound to identifiers or operators. When declaring an operator,
+its name needs to be "escaped", similarly to Haskell, and similarly to
+taking an operator's value:
+;;
+(+-+) = one -> two -> one + two - two + one
+10 +-+ 20
+
+;; Escaping an operator to take its value: ;;
+weird_proc = (+-+)
+
+;;
+Proc types can be attached to proc declarations with the pragma operator `:`.
+Its usage is similar to type declarations in many other languages, but it's not
+a syntactic special case. See [#pragmas].
+;;
+(Int -> Int) : double = val -> val * 2
+
+;; Can be placed on a separate line; note the trailing colon: ;;
+(Int -> Int) :
+double = val -> val * 2
+
+;;
+Procs often grow large, complex, and acquire many parameters. Sometimes you're
+better off splitting them, but sometimes this is justified. The recommended
+solution (the only one supported, really) is to use named parameters, in the
+form of inline structs.
+;;
+complex_proc = {
+  arg0 = Type0
+  arg1 = Type1
+  arg2 = Type2
+} -> (
+  arg0.complex_operation
+  arg1.complex_operation
+  arg2.complex_operation
+)
+
+;;
+To provide a default parameter value, replace `= Some_type`
+with `= some_default_value`:
+;;
+fopen = {
+  path = Str
+  mode = `r`
+} -> (
+  ;; ... ;;
+)
+
+;; Inline modifiers and types: ;;
+some_proc = mut:Int:one -> const:Str:two -> one.format.(two)
+
+;;
+## Structs
+
+Struct definitions and literals use `{}`.
+
+Declaration _and_ assignment uses `=` between keys and values
+for total consistency between:
+- Field declaration in struct type definitions.
+- Field assignment in struct literals.
+- Variable declaration and assignment in scopes.
+
+This is done for several reasons:
+- Refactoring. It's not uncommon to factor out inline procedural code
+  into structured types, or perhaps vice versa.
+- Lower learning curve. Beginners intuitively feel that scopes (blocks)
+  and structs are very similar, and different syntax trips them up.
+- Total visual consistency.
+- Easily correct syntax highlighting.
+
+See [#scopes_are_structs] below.
+
+Sample type definition:
+;;
+Person = struct.{
+  id    = Int
+  name  = Str
+  email = Str
+}
+
+;; Sample construction: ;;
+person = Person.{
+  id    = 10
+  name  = `one`
+  email = `two@three.four`
+}
+
+;;
+For variables _and_ struct fields, "assigning a type" is defined as
+zeroing that variable or field by default. To provide another default,
+replace a type with a value:
+;;
+Post = struct.{
+  slug   = Str  ;; default zero ;;
+  public = true ;; default non-zero ;;
+  listed = true ;; default non-zero ;;
+}
+
+;; Accessible by URL (`public = true`) but no longer listed: ;;
+post = Post.{
+  slug   = `some_post`
+  listed = false
+}
+
+;;
+### Scopes are structs
+
+This is a bit tentative, but conceptually, we aim to unify structs, scopes,
+blocks, modules, because they're really just structs. It's structs all the
+way down. As a result, constants and variables are just struct fields in
+their respective scopes / blocks / modules.
+
+To drive this home, and make learning and refactoring easier, we unify the
+declaration / assignment syntax for all. See [#declaration_and_assignment].
+;;
+
+;;
+One of the weirder implications is that we might be able to run a block
+and "snapshot" it as a struct. The compiler infers the structure.
+
+This may not often be useful for sub-scopes. But this is exactly what happens
+with modules. Each module is evaluated and snapshotted as a struct. So there is
+no reason not to allow this for sub-scopes.
+;;
+block = struct.(
+  ;; Variable = public field. ;;
+  pub:mut:one = 10
+
+  ;; Variable = public field. ;;
+  pub:two = one + 20
+
+  ;; Variable = private field. ;;
+  three = one + two
+
+  ;; Side effect, runs exactly once, no field. ;;
+  stdout.println.[`intermediary value: ` one]
+)
+stdout.println.(block.one) ;; 10 ;;
+stdout.println.(block.two) ;; 30 ;;
+
+;; Since we made one of the "fields" mutable, we can reassign it too: ;;
+block.one.& = 40
+
+;;
+The above is distinct from _blocks as expressions_. It's often convenient to
+execute a sub-scope with intermediary variables and grab the output. Many
+languages support treating blocks as expressions. This only gets the result
+value, not the whole block-struct.
+;;
+result = do.(
+  one = 10
+  two = 20
+  one + two
+)
+log.(result) ;; 30 ;;
+
+;;
+### Modules are structs
+
+Modules are blocks, and blocks are structs. Modules are structs. QED.
+
+This could simplify the implementation: no special treatment for module root.
+
+Additionally, we want to support the ability to "inherit" from a module and
+override some of its procs and constants. This should be doable by "including"
+all content of one struct in another, then adding various overrides.
+See [#module_level_overrides].
+;;
+include.`some_other_module`
+some_proc = some_override_proc
+
+;;
+Supporting this for modules automatically makes this available
+for sub-scopes / blocks, which are also modules, after all:
+;;
+mod = struct.(
+  include.`some_other_module`
+  some_proc = some_override_proc
+)
+mod.some_proc
+
+;;
+In actual struct and dict literals, "include" might be emulated with a special
+field name, such as `*`. It splurges the content of another struct or dict into
+this one:
+;;
+some_struct = {
+  (*)        = another_struct ;; Splurge all fields from `another_struct`. ;;
+  some_field = `some_override`
+}
+some_dict = {
+  (*)             = another_dict ;; Splurge all fields from `another_dict`. ;;
+  `another_field` = nil          ;; Exclude this field. ;;
+  `some_field`    = `some_override`
+}
 
 ;;
 ### Struct fields
 
-Procedural languages tend to treat structs specially, with special syntax for
-field manipulation, distinct from the regular "call" syntax.
+We aim to unify structs with scopes, and struct fields with variables and procs.
 
-This document aims to reduce the amount of concepts and syntax which need to
-be supported intrinsically by a compiler of a feature-rich language. Features
-should be in library code. With that in mind, can we push structs out of the
-compiler and syntax, into the standard library?
+Struct fields are abstractions. Each field is effectively an offset in a tuple.
 
-Structs are basically tuples. Field names are abstractions for humans.
-At runtime, they're hardcoded memory offsets.
+A struct field "get" is equivalent to invoking a proc `A.S -> B`, where A is
+a struct type, `S` is a hardcoded symbol, and `B` is the field's value.
 
-Struct field "get" can be defined as a proc `X S -> Z` which reads the data
-at the right offset.
+A struct field "set" writes a value to the memory at an offset. In principle
+we could implement this by making fields "callable", so that the following
+would set a field:
 
-Struct field "set" can be defined as a proc `X S Y -> Z` which sets the data
-at the right offset. What is Z remains TBD: either previous value or nil.
+  some_struct.some_field.(some_value)
 
-However, this is not enough, because struct fields are _addressable_.
-Consider the following common operation:
+...But that would be inconsistent with variables, where this approach seems
+impractical. In both cases, it's syntactically ambiguous.
+
+Struct fields and variables are _addressable_.
+Consider this common operation:
 
   outer.middle.inner.some_field = some_value
 
-In languages with first-class references, such as C, Go, Rust, Swift, Nim and
-probably thousands more, taking a reference to a nested struct field is
-fairly common.
+The solution involves [#refs]. Accessing a struct field via its proc actually
+returns a ref: `A.S -> B.Ref`. However, this particular ref type is shy: it
+implicitly dereferences unless the caller _really_ wants a ref and knows what
+to do with it. Two procs which really know how to deal with refs are the dot
+operator `.` and the assignment operator `=`.
 
-Being able to take a reference to a nested field may be negotiable, but the
-ability to easily modify an inner field is probably non-negotiable. Worse,
-if `X S -> Z` naively returns an inner struct _by value_, copying the inner
-struct, a modification will silently succeed without doing anything:
+The dot knows how to chain refs:
 
-  outer.middle.inner.some_field.`some_value`
-        ^^^^^^ a copy
-               ^^^^^ a copy
-                     ^^^^^^^^^^ setter proc
-                                ^^^^^^^^^^^^ value is discarded
+  outer.middle.inner.some_field  -- ref all the way to outer memory
 
-The solution involves [#refs]. The key is implicit dereferencing. Any `Ref X`
-is implicitly convertible to X. Field getters return references. In any
-`X S -> Z`, Z is actually `Ref A` where A is the field's type.
+`=` knows about refs, but rejects assignment to shy refs.
+This is an error because `=` doesn't like it:
+
+  outer.middle.inner.some_field = another_value
+
+`=` likes assertive refs. The hypothetical immediate proc `&` performs a type
+conversion from a shy, retreating ref into a bold, eager ref ready for
+mutating assignment:
+
+  outer.middle.inner.some_field.& = another_value
 ;;
 
-;; Reading a field ;;
+;; Reading a field: ;;
 some_struct.some_field
 
-;; Writing a field ;;
-some_struct.some_field.`some_value`
-some_struct.some_field = `some_value`
+;; Writing a field: ;;
+some_struct.some_field.& = `some_value`
 
 ;;
-### Virtual fields
+### Struct virtual fields (procedural getters)
 
 Struct fields are abstractions defined with procs. What naturally follows is
 that a field needn't be stored in memory. Simply defining a getter proc gives
@@ -448,114 +971,87 @@ Many languages have special syntactic support for field / property getters.
 By unifying fields and procs, we get this for free, with no new concepts.
 
 Because we also unify scopes with structs and variables with struct fields,
-virtual variables should also be possible, by declaring a compile-time proc
-`S -> Z` where S is any hardcoded symbol. This is different from runtime
-virtual field procs and not demonstrated here.
+virtual variables should also be possible, by declaring an immediate proc
+`S -> A` where S is any hardcoded symbol, which could do arbitrary things
+to define a requested variable on the fly. This is different from struct
+virtual fields which normally associate with a hardcoded field name, and
+not demonstrated here.
 
-The proc definition syntax below is provisional and assumes
-[#modules_as_struct_literals] which is an experimental concept.
-
-This example "getter" computes a virtual field from other fields.
+The example "getter" below computes a virtual field from other fields.
 
 The conditional syntax is provisional. See [#conditionals].
-
-The parentheses are optional and used for readability.
-
-The conditions could be simplified by making `Str` convertible to `Bool`.
-See [#truthiness].
 ;;
-guess_name = fn.{
-  X Person
-  Z Str
-  Z case.{
-    (X.name  != ``) X.name
-    (X.slug  != ``) (`@` + X.slug)
-    (X.email != ``) X.email
-    _               `(anonymous)`
-  }
+(Person -> Str) :
+guess_name = val -> case.{
+  (val.name  != ``) = val.name
+  (val.slug  != ``) = (`@` + val.slug)
+  (val.email != ``) = val.email
+  _                 = `(anonymous)`
 }
 
 ;; Usage is identical to struct fields: ;;
 some_person.guess_name
 
-;;
-Shorter definition syntax. `X` is input.
-Input and output types are inferred.
-;;
-guess_name = fn.(case.{
-  (X.name  != ``) X.name
-  (X.slug  != ``) (`@` + X.slug)
-  (X.email != ``) X.email
-  _               `(anonymous)`
-})
+;; Using C-style ternary condition expressions: ;;
+(Person -> Str) :
+guess_name = val ->
+  (val.name  != ``) ? val.name         !
+  (val.slug  != ``) ? (`@` + val.slug) !
+  (val.email != ``) ? val.email        !
+  `(anonymous)`
 
 ;;
-Shorter version which assumes that "boolean" forms such as `and` and `or`
-are not limited to the input / output type `Bool`. See [#truthiness] which
-does not cover this use case properly.
-
-This mimics some dynamically typed languages, but with static typing.
-Given that the first element in the input to `or` is of type `Str`,
-every other element must be either `Str` or implicitly convertible
-to `Str`, and there must be some way to test for truthiness.
-The latter means that `Str` must be implicitly convertible
-to `Bool` in the current scope. Empty strings are falsy.
+Shorter version which assumes that `Str` is implicitly convertible to `Bool`
+and only zero-length strings are falsy. See [#truthiness]. Alternatively,
+maybe it assumes that the operator `|` is defined on `Str`.
 ;;
-guess_name = fn.(or.(
-  X.name
-  and.(X.slug (`@` + X.slug))
-  X.email
-))
-
-;; Same as above but with infix. ;;
-guess_name = fn.(
-  X.name | (X.slug & (`@` + X.slug)) | X.email
+guess_name = val -> or.(
+  val.name
+  and.(val.slug (`@` + val.slug))
+  val.email
 )
 
-;; Shortest typed declaration. Result type is inferred. ;;
-guess_name = Person.fn.(
-  X.name | (X.slug & (`@` + X.slug)) | X.email
-)
+;; Infix version: ;;
+guess_name = val -> val.name | (val.slug & (`@` + val.slug)) | val.email
 
 ;;
-### Struct field memory usage
+### Variables
 
-Not all struct fields occupy memory.
-- The pseudo-field `*` splurges fields from another type.
-- Pragmas don't use memory.
-- There may be more in the future.
+The term "variable" (or "constant") typically refers to standalone symbols,
+bound to some value while not being part of an explicitly declared structure.
+Since [#scopes_are_structs], variables are struct fields, as covered above.
+
+One quirk peculiar to standalone symbols is implicit dereferencing. Every
+symbol references something. Using that symbol tends to yield whatever it
+is referencing.
+
+The implicit dereference can be "countered" with explicit referencing,
+which yields _the actual variable_, which is a reference to a memory
+location. In addition, the dot `.` connects the references implicitly:
+
+  some_var.&
+  some_var.some_field.&    -- Goes back to `some_var`.
+
+Regular variable access is equivalent to a proc `S -> A` where S is a literal
+symbol. This means we could potentially allow to define such a proc explicitly,
+overriding the default behavior of symbol access, or providing a fallback. This
+could allow library or app code to insert custom logic into variable / field
+access for a given scope. Could be useful for embedded DSLs.
 ;;
-Some_struct_type = struct.{
-  ;; Virtual ;;
-  *           Another_struct_type ;; Splurges fields from another type. ;;
-  ::          pub                 ;; Struct-level pragma, doesn't use memory. ;;
-  value_field ::.pub              ;; Field-level pragma, doesn't use memory. ;;
 
-  ;; Real ;;
-  value_field Int                 ;; Uses memory. ;;
-  proc_field  fn.Int.Int          ;; Uses memory. ;;
-}
+;; Reading a variable calls `S -> A` ;;
+some_variable
 
 ;;
 ### Constants
 
-This talks about variables, but since we're aiming to unify them
-with struct fields, this also applies to fields.
-
-Constants should be the default and mutability should be opt-in.
-
-Mutability applies to variables and values separately, but since this usually
-goes hand in hand, we mostly mix this together here.
+All "variables" and fields are immutable by default.
+Mutability is opt-in via [#pragmas].
 
 There are multiple kinds of constants:
 - Compile-time constants.
 - Execution-time constants.
 - Execution-time pseudo-constants.
-
-All constants have one thing in common: for their specific literal symbol,
-only `S -> Z` is defined, and `S X -> Z` is not defined. This resolves the
-conflict between `X Y -> Z` and `S Y -> Z` for variables holding a reference
-to a proc.
 
 Compile-time constants are either hardcoded primitive literals, or arbitrary
 values calculated by compile-time procs. The resulting value can be assigned
@@ -571,18 +1067,30 @@ allows to modify the memory they reference.
 ;;
 
 ;;
-### Proc overloads
+### Overloads
 
-Procs can be overloaded on arity and input types. For any fixed X, it's
-perfectly valid to define any amount of `X S -> Z` with distinct S, and
-any amount of `X Y -> Z` with distinct Y.
+Our flexible, extensible design inevitably requires overloads. The most basic
+example is integer arithmetic. Adding `Int8` vs `Int64` requires distinct CPU
+instructions, yet we want to write both with `+`. Most languages handle such
+differences by stuffing them deep into the compiler core, as special cases.
+We instead implement them as overloads, also known as specializations.
 
-We don't plan to support overloading on Z because it interferes with type
-inference. Every proc is uniquely identified by its left side:
+Overloads are only needed for procs. Using them for types and values easily
+leads to ambiguities, and is not recommended. However, because we have the
+"dump stuff into scope" import style, supporting overloads for all kinds of
+constants or variables may be unavoidable, with contextual disambiguation
+based on type information, falling back on explicit namespacing.
 
-  X Y   -> Z    -- Identified by `X Y`.
-  X S   -> Z    -- Identified by `X S`.
-  X S Y -> Z    -- Identified by `X S Y`.
+Since procs are unary, they are resolved by the first operand, then by the
+second operand, and so on. We don't plan to support overloading on the return
+type, because this interferes with type inference. Every proc is uniquely
+identified by its symbol (if named) and inputs, but not by its output:
+
+  A -> B -> C              -- identified by `A -> B`
+  A -> B -> C -> D         -- identified by `A -> B -> C`
+
+  S -> A -> B -> C         -- identified by `S -> A -> B`
+  S -> A -> B -> C -> D    -- identified by `S -> A -> B -> C`
 
 Proc declarations in sub-scopes can shadow procs coming from super-scopes,
 but conflicting declarations within one scope are not allowed.
@@ -591,344 +1099,18 @@ All proc declarations, whether they're overloads or overrides, are lexically
 scoped. Types don't carry procs along. A data type for which no procs are in
 scope is just a chunk of bytes with a known size. This is true even for
 "built-in" "primitives" such as integers.
-;;
 
-;;
-### Constant overloads
-
-Procs are constants, and constants are `S -> Z` procs. They're very close.
-We may end up implementing general constant overloads rather than just proc
-overloads.
-
-In that case, we'll aim to use the same declaration syntax for constants and
-procs. Quite a few languages do this. One good example is Odin:
-
-  Some_Type  :: struct {}
-  some_proc  :: proc() {}
-  some_const :: "some_value"
-
-The compiler will use type inference to resolve overloaded constants.
-A cast / type conversion / type assertion can be used to explicitly
-choose a variant.
-;;
-
-;;
-### Call syntax
-
-This is provisional and may be revised later. The important part is to keep
-the syntax light while avoiding ambiguity. The parser must be context-free.
-This makes syntax highlighting must easier.
-
-We have specific design requirements for the call syntax:
-- Several ordering styles:
-  - Unary `S X` (required).
-  - Unary `X Y` (not required, but comes out of `S X`).
-  - Unary `X S` (required for field getters).
-  - Binary `X S Y` (required for chaining).
-  - Allow using the same S in any position.
-- Easy to type.
-- Light appearance.
-- Avoid having to separate atomic tokens with `,` or `;`. The following must
-  be valid syntax for a list with 3 elements: `[one two three]`. Our data
-  notation forbids `,` and `;`, making this a hard requirement.
-- Totally unambiguous; calls must be visually clear without hidden context,
-  such what the types are, or what is the proc arity. This makes correct
-  syntax highlighting of calls possible, in stark contrast with Rebol.
-
-So here's the current plan; `-` stands for any operator:
-- Operator binary infix: `arg_0 - arg_1`
-- Operator unary postfix: `arg_name.-`
-- Operator unary prefix: `-.arg_name`
-- Identifier unary postfix: `arg_name.proc_name`
-- Identifier unary prefix: `proc_name. arg_name`
-- Identifier binary infix: `arg_0 .proc_name. arg_1`
-
-Operator-shaped symbols without dots are always in binary infix call position.
-All other calls involve dots. (Note that struct fields use getter and setter
-procs, without any dedicated syntax.)
-
-The big deal (really!) is we don't need the `:,;` separators / joiners.
-These are syntactically valid Clojure-style structures (list and dict).
-
-  [10 20 30]
-
-  {
-    one   10
-    two   20
-    three 30
-  }
-
-When rapidly writing and editing code, the cost of separators / joiners adds up
-real fast. Most programmers seem to be fine with this. My hypothesis is that
-most folks either haven't been spoiled by languages without this issue, or
-haven't paid enough attention to how much time is wasted fixing typos involving
-these characters.
-
-Like Lisps, we use the same call syntax for runtime and compile-time procs.
-Our heavy reliance on implementing language features as regular compile-time
-procs makes this unavoidable. Procs can be marked for compile-time execution
-at the declaration level.
-;;
-
-;;
-The pattern `S. X -> Z` is used for unary prefix calls. This notation can be
-used for ANY proc `X -> Z` bound to S in current scope.
-;;
-some_proc.`some_value`
-`some_value`.some_proc
-len.`some_string`
-`some_string`.len
-
-;;
-The pattern `X .S -> Z` is used for unary postfix calls. This notation can be
-used for ANY proc `X -> Z` bound to S in current scope.
-;;
-some_struct.some_field
-`some_string`.len
-
-;;
-The compiler splits `one.two` into `one .two` (note the space).
-Postfix calls don't need a space:
-;;
-some_struct.some_field
-
-;; Prefix calls need a space when LHS and RHS are symbols: ;;
-some_field. some_struct
-
-;; Alternatively, grouping a symbol "escapes" it: ;;
-some_field.(some_struct)
-
-;;
-The pattern `X.Y -> Z` allows to make a specific type `X` callable
-with a specific type `Y`.
-
-Consider a proc `Str Int -> Uint8` which gets a byte at a position.
-If declared in the `X Y -> Z` style, without S, we can "call" a string
-with an integer. The following example should retrieve the byte "n".
-;;
-`some_string`.10
-
-;; Placeholder proc definition. The `_` puts it in scope anonymously. ;;
-_ = fn.{
-  X Str
-  Y Uint
-  Z (;; (Get and return byte at index.) ;;)
-}
-
-;;
-When Y is stored in a variable, `X Y -> Z` and `X S -> Z` are ambiguous.
-The compiler resolves this by prioritizing `X Y` over `X S`. This means
-that a later definition of `X S`, where S accidentally matches the name
-of the variable holding Y, does not interfere with prior callsites.
-
-This invokes the same "rune at index" proc as above:
-;;
-`some_string`.(some_integer_variable)
-
-;;
-The pattern `X .S. Y -> Z` is used for binary infix calls.
-
-X dot is placed on both sides to make arity syntactically unambiguous,
-avoiding conflict with whitespace separation of atomic tokens.
-
-This notation can be used for ANY proc `X Y -> Z` bound to S in current scope.
-;;
-LHS_value   .proc_name.  RHS_value
-some_struct .some_field. `some_new_value`
-
-;;
-Operators are always binary infix and don't need dots.
-This example also demonstrates overloads.
-;;
-10    + 20    ;; Int Int -> Int ;;
-`one` + `two` ;; Str Str -> Str ;;
-
-;;
-Variable declaration and initialization could be defined in stdlib code as a
-compile-time proc. Recall the proc pattern `X S Y -> Z`. Variable declaration
-would be defined as a proc `X = Y -> Nil` where X is a literal symbol.
-
-It takes the compiler's view of any piece of code where it's used. The view
-includes AST, scope, and more. It requires X to be a literal symbol not yet
-declared, checks types, reserves stack space, emits assembly instructions,
-and modifies the scope to actually declare the variable.
-;;
-some_ident = `some_val`
-
-;; For variable reassignment, we could define a separate operator. ;;
-some_ident =: `some_new_val`
-some_ident := `some_new_val`
-some_ident <- `some_new_val`
-
-;; `=` should also be usable for struct field assignment. ;;
-outer.middle.inner.field = `some_val`
-
-;;
-Alternatively, see other parts of this document for unification of
-scopes with structs, and variables with fields. In that case, we
-may use `some_ident.some_new_val` for reassignments.
-;;
-some_ident.`some_new_val`
-
-;; Unary operator calls require a dot: ;;
--.123
-123.-
-
-;;
-### Precedence
-
-Infix is left-associative. The following is `((((10 - 20) / 30) + 40) * 50)`:
-;;
-10 - 20 / 30 + 40 * 50
-
-;;
-Unary calls `X.Y -> Z` and `X.S -> Z` take precedence over infix calls.
-The following becomes `12.34 - (56.78 .trunc)`:
-;;
-12.34 - 56.78 .trunc
-
-;; For unary calls on results of infix expressions, use grouping: ;;
-(12.34 - 56.78).trunc
-
-;; Or simply split up the expression: ;;
-val = 12.34 - 56.78
-_   = val.trunc
-
-;;
-Unary prefix calls are right-associative.
-The following becomes `one.(two.three)`.
-;;
-one. two. three
-
-;;
-In principle it's possible to implement a syntax where infix precedence also
-respects whitespace, but our data notation does not support that. Even though
-the parser is encouraged to preserve references to source code for all tokens,
-it's not required to preserve it for primitives such as numbers. Which means
-we don't always know the spacing between tokens.
-;;
-
-;;
-Calls combine operands into expressions. This means that in list and dict
-literals, we often don't need explicit grouping:
-;;
-[
-  10 + 20 ;; First expression = first element. ;;
-  30 + 40 ;; Second expression = second element. ;;
-]
-{
-  one 10 + 20 ;; First field. ;;
-  two 30 + 40 ;; Second field. ;;
-}
-
-;;
-### Chaining
-
-We support infix and postfix because many complex expressions, such as long
-data transformation pipelines, are nicer to write in a chainable style.
-
-Some languages, notably Lisps, have only the prefix call notation, and end up
-inventing pipeline macros, such as Clojure's `->` and `->>`. Users end up
-having to convert code between two styles when adding or removing steps.
-Having native infix and postfix spares us from that.
-;;
-
-;; Unary chaining: ;;
-one.two.three.four
-
-;;
-Binary chaining.
-
-This example presumes the existence of a compile-time proc `->`
-for inline proc definitions.
-;;
-some_list
-  .map.    (val       -> val / 2)
-  .filter. (val       -> val % 2)
-  .fold.   ([acc val] -> acc + val)
-
-;;
-Binary chaining with alternative proc syntax.
-Implicit symbol `X` stands for first argument.
-;;
-some_list
-  .map.    fn.(X / 2)
-  .filter. fn.(X % 2)
-  .fold.   fn.(X + Y)
-
-;;
-If we could get rid of expression grouping, we'd reserve
-one pair of delimiters entirely for procs:
-;;
-some_list
-  .map.    (X / 2)
-  .filter. (X % 2)
-  .fold.   (X + Y)
-
-;;
-When LHS and RHS are types or groups of types, `->` constructs a proc type.
-Procs can only be `X -> Z` and `X Y -> Z`.
-;;
-Str -> Int
-(Str Str) -> Str ;; Undecided between () and []. ;;
-[Str Str] -> Str ;; Undecided between () and []. ;;
-
-;; Alternative way to construct proc types. ;;
-fn.Str.Int     ;; X -> Z ;;
-fn.Str.Str.Str ;; X Y -> Z ;;
-
-;;
-### First-class procs
-
-Procs are first-class. They can be put into variables and passed around.
-This means we must define how to call a proc stored in a variable.
-;;
-
-;; Proc type `X -> Z` is called in the `S X -> Z` style: ;;
-some_proc_variable.`some_input_value`
-
-;; Proc type `X Y -> Z` is called in the `X S Y -> Z` style: ;;
-`left_input` .some_proc_variable. `right_input`
-
-;;
-Some operations involve first-class procs with no input or output, called only
-for side effects, like `void(void)` in C. They have the type `Nil -> Nil` and
-are called in the `S X -> Z` style by passing nil:
-;;
-some_proc_variable.nil
-
-;;
-Overloads are impractical for mutable variables, but might be practical for
-constants. Supporting constant overloads allows to completely unify constant
-and proc declarations.
-
-See also:
-- [#scopes_are_structs]
-- [#variables]
-- `S -> Z`
-- `S X -> Z`
-
-Unification of scopes with structs, and variables with struct fields, creates
-a syntactic ambiguity between variable assignment and invoking a proc value
-stored in a variable. X variable with an `X -> Z` proc is called like this:
-
-  some_proc.some_val
-
-Which is the same syntax as `S X -> Z` for assigning that variable.
-
-The conflict is resolved in three ways. If the variable is constant, then the
-assignment proc `S X -> Z` is simply not defined for its symbol. If the types
-are distinct, the compiler can unambiguously choose one. If the types are
-identical, then the variable is holding a proc which takes a proc of the same
-proc type; the code is doing something crazy and mad and is on its own.
+It seems likely that we'll need to support a form of specificity in overload
+resolution. Type constraints which are more specific need to take priority
+over type constraints which are less specific.
 ;;
 
 ;;
 ## Refs
 
-The language has a concept of generic references, similar to Rust's trait
-`Deref` and Clojure's `IDeref`. We call it `Ref`. Any `Ref X` is an opaque
-value which implicitly dereferences to `X` on demand.
+We intend to have generic references, similar to Rust's trait `Deref` and
+Clojure's `IDeref`. We call it `Ref`. Any `Ref A` is an opaque value which
+implicitly dereferences to `A` on demand.
 
 Not to be confused with reference types, which is a distinct concept.
 See [#type_system] for those.
@@ -937,13 +1119,13 @@ References must be non-nilable by default.
 Nilability / optionality should be opt-in.
 
 `Ref` implementations may be either read-only, or read-write. A read-write
-`Ref X`, in addition to implicitly dereferencing to `X` on a read, also
-accepts `X` on a write.
+`Ref A`, in addition to implicitly dereferencing to `A` on a read, also
+accepts `A` on a write. A writable ref is a `MutRef`.
 
 The most notable refs are pointers. The language should have automatic memory
 management without GC with ownership tracking, in the spirit of Swift and
 Nim. There may be multiple strategies. We might end up with exclusively
-owning pointers, like Rust `Box`, and also with multi-ownership pointers,
+owning pointers like Rust `Box`, and also with multi-ownership pointers
 like Rust `Rc`. All of them would be `Ref`.
 
 Refs are not limited to pointers. For example, a reactivity / observability
@@ -951,45 +1133,51 @@ library would provide observable references. Their implementation would be
 opaque, they could be "fat pointers" or something even fatter. By virtue of
 being `Ref`, they dereference to underlying values on demand.
 
-Concurrent code involves futures (`Fut`). It seems likely that a `Fut X` is
-also a `Ref X`. Clojure does this. A future's eventual value or error would
+Concurrent code involves futures (`Fut`). It seems likely that a `Fut A` is
+also a `Ref A`. Clojure does this. A future's eventual value or error would
 be stored and reused for every dereference. Futures could also be lazy.
 
-X `Ref` is not necessarily a _reference type_. The concepts are distinct. `Ref`
+A `Ref` is not necessarily a _reference type_. The concepts are distinct. `Ref`
 is just a interface / trait. Some refs, such as smart pointers, are unavoidably
 reference types, but many could be value types. This should be transparent /
 invisible to code using them.
 ;;
 
 ;;
-Conceptually, every variable of `X` is a read-write `Ref X`. Since scopes are
+Conceptually, every variable of `A` is a read-write `Ref A`. Since scopes are
 structs and variables are fields, this also applies to struct fields. Fields
-are refs. Accessing a struct field returns a `Ref` to that field's memory.
-This allows field assignments to work:
+are refs. However, variables and fields are shy, reticent refs: they like to
+implicitly dereference. To mutate one, its reference must be taken firmly:
 ;;
-ref = some_struct.some_field ;; `Ref X` ;;
-val = ref.*                  ;; `Int` ;;
-ref = 123                    ;; Assigns the field. ;;
-some_struct.some_field = 123 ;; Identical to the above. ;;
+val = some_struct.some_field   ;; `A` ;;
+ref = some_struct.some_field.& ;; `Ref A` ;;
+val = ref.*                    ;; `Int` ;;
+ref = 123                      ;; Assigns the field. ;;
+some_struct.some_field.& = 123 ;; Identical to the above. ;;
 
 ;; Also works for nested structs: ;;
-ref = struct_0.struct_1.field_0
+ref = struct_0.struct_1.field_0.&
 ref = 123
 log.(struct_0.struct_1.field_0) ;; 123 ;;
 
+;; Accessing a list element returns a reference: ;;
+list = [10 20 30]
+ref = list.1.&
+ref = 40
+log.(list) ;; [40 20 30] ;;
+
 ;;
-Procs which implement conditionals, such as `if` or `?` and `:`,
-might end up returning references: `Ref X`. Dereferencing the result
-evaluates the conditional.
+Immediate procs which implement conditionals might end up returning references:
+`A.Ref`. Dereferencing the result evaluates the conditional.
 
 These refs should exist in memory only at compilation time, not at program
 execution time. Furthermore, they should be compatible with compile-time
 constant evaluation and dead branch elimination.
 ;;
-opt =     predicate ?      expression              ;; Ref Opt X -> Opt X ;;
-opt = if.(predicate).then.(expression)             ;; Ref Opt X -> Opt X ;;
-val =     predicate ?      branch0 :      branch1  ;; Ref X -> X ;;
-val = if.(predicate).then.(branch0).else.(branch1) ;; Ref X -> X ;;
+opt =     predicate  ?     expression              ;; A.Opt.Ref -> A.Opt ;;
+opt = if.(predicate).then.(expression)             ;; A.Opt.Ref -> A.Opt ;;
+val =     predicate  ?     branch0   !    branch1  ;; A.Ref     -> A     ;;
+val = if.(predicate).then.(branch0).else.(branch1) ;; A.Ref     -> A     ;;
 
 ;;
 ## Named parameters
@@ -1019,162 +1207,170 @@ and redefines the older variants to call the full one.
 
 Sample definition below. The exact syntax is TBD.
 ;;
-fn.{
-  name some_proc
-
-  ;; Input definition. "X" means the input in `X -> Z`. ;;
-  X {
-    arg0 type0
-    arg1 type1
-    arg2 type2
+some_proc =
+  ;; The proc takes one input: an inline struct. ;;
+  {
+    arg0 = type0
+    arg1 = type1
+    arg2 = type2
   }
-
+  ->
   ;;
-  Output definition. "Z" means the output in `X -> Z`.
-  The compiler infers the type of Z from the last expression.
+  The proc's output: a block. The last expression is the result.
+  The compiler infers its type.
   ;;
-  Z (
+  (
     some_expr
     some_expr
     some_expr
     some_result
   )
-}
 
 ;; Calling this proc: ;;
 some_proc.{
-  arg0 val0
-  arg1 val1
-  arg2 val2
+  arg0 = val0
+  arg1 = val1
+  arg2 = val2
 }
 
 ;; For complex APIs, we also encourage named _return_ parameters via structs: ;;
-fn.{
-  name some_proc
-  X {
-    inp0 type0
-    inp1 type1
+some_proc = {
+  inp0 = type0
+  inp1 = type1
+} -> (
+  out2 = some_computation
+  out3 = some_computation
+  ;; The result is an inline struct. The compiler infers the shape. ;;
+  {
+    out2 = out2
+    out3 = out3
   }
-  Z (
-    out2 = some_computation
-    out3 = some_computation
-    {
-      out2 out2
-      out3 out3
-    }
-  )
+)
+
+;; Many procs will have non-struct-taking overloads for simple cases. ;;
+file = fs.open.`readme.md`
+
+;; Another overload would take a file URL. ;;
+file = fs.open.(some_file_url)
+
+;; The fully configurable version takes a struct. ;;
+file = fs.open.{
+  path   = `readme.md`
+  read   = true
+  write  = true
+  create = true
 }
 
 ;;
-Many procs will have non-struct-taking overloads for simple cases,
-with a full struct-taking version for more complex cases.
+## Modules and imports
 
-For example, an "open" function would often be called with just a string.
-The following lines are equivalent.
-;;
-fs.open.`readme.md`
-fs .open. `readme.md`
-
-;;
-Another overload would take a file URL.
-The following lines are equivalent.
-;;
-fs.open.(some_file_url)
-fs.open. some_file_url
-fs .open. some_file_url
-
-;;
-The final overload would be the full configurable version
-taking a struct.
-;;
-fs.open.{
-  path `readme.md`
-  read true
-  write true
-  create true
-}
-
-;;
-## Modules
+- Modules are blocks.
+- Blocks are structs.
+- Modules are structs.
+- Blocks are sub-modules.
 
 Every module is a struct whose type is inferred by the compiler.
-Variables declared in module root are its "fields".
+Declarations in module root are its "fields".
 
-Since modules are structs, structs are modules. Everything below may also
-apply to structs. We may even make it possible to "import" a struct, if a
-use case arises.
+It should be possible to "import" a struct.
 
-Each variable in module root is `S -> Z`. For each variable, the compiler
-also automatically declares `M S -> Z` where M is the module's own type.
-This is used with named imports.
+It should be possible to declare a sub-"module" as a block or struct.
 
-For each `S X -> Z` proc in module root, the compiler automatically declares
-a matching `M S X -> Z` where M is the module's own type. This is used with
-named imports.
+We could make modules "callable", by defining anonymous procs `M -> A -> B`,
+where M is the inferred type of a particular module, and A is an input type.
+Such procs could be defined either inside or outside that module.
 
-Binary procs can be declared with either `X Y -> Z`, making X callable with Y,
-or with `X S Y -> Z` which requires infix S in calls.
-
-A module can be "callable". Any `M X -> Z`, where M is a module type, makes
-it possible to "call" that module with X. Such procs can be defined either
-inside or outside that module.
-
-Importing a module always dumps its binary `X Y -> Z` procs into current
-scope. Access mode for `S -> Z` and `S X -> Z` depends on import style.
+Three import styles are planned:
+- Named import: explicit namespacing.
+- Anon import: dump into scope, privately.
+- Include: dump into scope, publicly.
 ;;
 
-;;
-When using a named import:
+;; Named import ;;
 
-Module-level variables are dumped into current scope in their `M S -> Z`
-form and can be accessed as `mod_name.var_name`.
-
-Module-level unary `S X -> Z` procs are dumped into current scope in their
-`M S X -> Z` form and can be called as `mod_name.proc_name. some_input`.
-The extra space is only needed for named inputs, not for literal values.
-
-This example also uses inline structs in proc calls.
-See [#named_parameters] for details.
-
-The exact import syntax is TBD.
-;;
 str = import.`std:strings`
 
 str.join_lines.[`one` `two` `three`]
 
 str.join.{
-  src [`one` `two` `three`]
-  sep `_`
+  src = [`one` `two` `three`]
+  sep = `_`
 }
 
 str.split.{
-  src `one two three`
-  sep ` `
+  src = `one two three`
+  sep = ` `
 }
 
 ;;
-An include-style import is very similar to dumping an entire module into the
-current scope. However, identifiers visibly declared in the current module
-take priority over "invisible" identifiers from that module. When importing
-in a sub-scope, declarations from super-scopes override conflicting ones from
-the imported module.
+Anon import.
+
+Basically dumps an entire module into the current scope. The dump is private,
+not exported. However, identifiers visibly declared in the current module take
+priority over "invisible" identifiers from that module. When importing in a
+sub-scope, declarations from lexical super-scopes override conflicting ones
+from the imported module.
 ;;
-include.`std:strings`
+
+import.`std:strings`
 
 join_lines.[`one` `two` `three`]
 
 join.{
-  src [`one` `two` `three`]
-  sep `_`
+  src = [`one` `two` `three`]
+  sep = `_`
 }
 
 split.{
-  src `one two three`
-  sep ` `
+  src = `one two three`
+  sep = ` `
 }
 
+;; Include-style import. Same as anon import, but the dump is public, too. ;;
+include.`std:strings`
+;; All the same stuff. ;;
+
 ;;
-### Imports
+### Module-level overrides
+
+Part of the reason for treating modules as values, is to allow overrides.
+
+Let's say the module `std:paths` implements path operations. It defines a
+module-level constant `SEP = "/"` and uses that throughout the module.
+
+Now let's say someone is writing code for the RISC OS, where FS paths denote
+root with `$` and separate directories with `.`.
+
+User code needs `SEP` to be `"."`, and probably needs to override procs such
+as `is_root` and `is_abs` to respect the root prefix `$`. The rest of the
+code in `std:paths` should respect the overrides. As long as the module is
+carefully written to support such overriding, by not hardcoding separators,
+the rest of it should "just work".
+
+The simplest way of supporting overrides is probably via module inheritance.
+A user declares `riscos/paths` which inherits from `std:paths` by dumping
+everything in, include-style, and declares its own constants and procs as
+overrides. The compiler respects this by copying the original procs and
+specializing them for the new module.
+;;
+
+include.`std/paths`
+SEP = `.`
+is_root = val -> val.has_prefix.`$` ;; Override. ;;
+;; ...Other proc overrides as needed. ;;
+
+;;
+Since modules are structs, and blocks are structs,
+this should be doable with a block:
+;;
+mod = struct.(
+  include.`some_other_module`
+  some_proc = some_override_proc
+)
+mod.some_proc
+
+;;
+### Import path resolution
 
 Modules are files, and imports are file-oriented: you don't import a package,
 you import a specific file. This applies to standard library modules, local
@@ -1187,9 +1383,9 @@ Initially we'll require explicit file extensions. This has many advantages:
 - Ease of learning: makes it totally clear where the system finds the module.
   Languages with "magic" package resolution are hostile to beginners.
 - Ease of implementation: the system doesn't need to do any "magic".
-- Friendly to network imports: a file is resolved unambiguously
-  in a single network request. This is also why the ES module
-  system, designed for browsers, requires explicit file extensions.
+- Friendly to network imports: a file is resolved unambiguously in a single
+  network request. This is also why the ES module system, designed for browsers,
+  requires explicit file extensions.
 - Avoid ambiguity when supporting imports for different file types.
 
 To clarify the latter, if we treated `./some_mod` as `./some_mod.mox`,
@@ -1222,11 +1418,11 @@ for JS interop (importing JS libs).
 ;;
 some_lib = import.`https://example.com/some_lib/index.mox`
 some_lib = import.{
-  src `https://example.com/some_lib/index.mjs`
-  type `js`
-  sym {
-    SOME_CONST Str
-    some_proc  Some_type -> Other_type
+  src  = `https://example.com/some_lib/index.mjs`
+  type = `js`
+  decl = {
+    SOME_CONST = Str
+    some_proc  = Some_type -> Other_type
   }
 }
 
@@ -1241,18 +1437,18 @@ famous example. Both have used this to great success.
 Config and usage:
 ;;
 {
-  deps {
-    lib_0 {
-      type `git`
-      repo `https://example.com/author_0/lib_0.git`
-      tag  `0.1.0`
-      hash `d5c4e6b776d64add84143bf54a0e2713` ;; Auto-inserted ;;
+  deps = {
+    lib_0 = {
+      type = `git`
+      repo = `https://example.com/author_0/lib_0.git`
+      tag  = `0.1.0`
+      hash = `d5c4e6b776d64add84143bf54a0e2713` ;; Auto-inserted ;;
     }
-    lib_1 {
-      type `git`
-      repo `https://example.com/author_1/lib_1.git`
-      tag  `0.2.0`
-      hash `b6b25b7cc6b44521aa539a1141444936` ;; Auto-inserted ;;
+    lib_1 = {
+      type = `git`
+      repo = `https://example.com/author_1/lib_1.git`
+      tag  = `0.2.0`
+      hash = `b6b25b7cc6b44521aa539a1141444936` ;; Auto-inserted ;;
     }
   }
 }
@@ -1286,9 +1482,9 @@ header and object paths, as relative paths since they're likely to be vendored.
 Seamless interop should look roughly like this:
 
   some_lib = import.{
-    type   `c`
-    header `./vendor/some_header.h`
-    object `./target/some_object.o`
+    type   = `c`
+    header = `./vendor/some_header.h`
+    object = `./target/some_object.o`
   }
 
 In addition to import, we want to support export. We'd like to auto-generate
@@ -1325,22 +1521,22 @@ We provide conversion procs for all C types, mapping them to our types.
 Free or very cheap conversion is implicit, expensive conversion explicit.
 ;;
 some_lib = import.{
-  type `c`
-  obj `./target/some_object.o`
-  sym {
-    SOME_CONST Uint32
-    some_proc  [C.string C.int] -> C.int
+  type = `c`
+  obj  = `./target/some_object.o`
+  decl = {
+    SOME_CONST = Uint32
+    some_proc  = [C.string C.int] -> C.int
   }
 }
-pair        = `some_string`.cstring_pair
-result_code = some_lib.some_proc.(pair)
+[ptr len]   = `some_string`.cstring_pair
+result_code = some_lib.some_proc.[ptr len]
 
 ;;
 ### Import types
 
 We should ship with at least two import types:
 - Import language code.
-- Import arbitrary bytes.
+- Import a file as a chunk of bytes.
 
 Being able to import arbitrary bytes is handy for a variety of cases. It allows
 libraries to keep data in separate files next to code, but when imported, make
@@ -1374,247 +1570,26 @@ Our own data notation would be supported by default, without needing
 to provide a decoder.
 ;;
 some_text = import.{
-  src  `./some_text.txt`
-  type Str
+  src  = `./some_text.txt`
+  type = Str
 }
 some_blob = import.{
-  src  `./some_blob.bin`
-  type [Uint8]
+  src  = `./some_blob.bin`
+  type = Uint8.Arr
 }
 tzdata = import.{
-  src  `./iana_timezone_data`
-  type FS
+  src  = `./iana_timezone_data`
+  type = FS
 }
 some_config = import.{
-  src  `./config.mox`
-  type Config
+  src  = `./config.mox`
+  type = Config
 }
 some_config = import.{
-  src    `./config.json`
-  type   Config
-  decode json.decode
+  src    = `./config.json`
+  type   = Config
+  decode = json.decode
 }
-
-;;
-### Module-level overrides
-
-Part of the reason for treating modules as values, and module-level procs as
-the pattern `X S Y -> Z`, similar to methods in other languages, is to allow
-overrides.
-
-Let's say the module `std:paths` implements path operations. It defines a
-module-level constant `SEP = "/"` and uses that throughout the module.
-
-Now let's say someone is writing code for RISC OS, where FS paths denote root
-with `$` and separate directories with `.`.
-
-User code needs `SEP` to be `"."`, and probably needs to override procs such
-as `is_root` and `is_abs` to respect the root prefix `$`. The rest of the
-code in `std:paths` should respect the overrides. As long as the module is
-carefully written to support such overriding, by not hardcoding separators,
-the rest of it should "just work".
-
-The simplest way of supporting overrides is probably via module inheritance.
-A user declares `riscos/paths` which inherits from `std:paths` by dumping
-everything in, include-style, and declares its own constants and procs as
-overrides. The compiler respects this by copying the original procs and
-specializing them for the new module.
-;;
-
-include.`std/paths`
-SEP = `.`
-is_root = fn.(X.has_prefix.`$`) ;; Override. ;;
-;; ...Other proc overrides as needed. ;;
-
-;;
-## Block expressions
-
-It's often convenient to execute a sub-scope with intermediary variables
-and grab the output. Many languages support treating blocks as expressions.
-
-The stdlib provides a special proc for this. In this sketch, it's called `do`
-and has the signature `X -> Z` where X matches any list literal. It's marked
-for immediate compile-time execution. It receives AST and other compile-time
-context and emits code for executing this sequence of expressions. It also
-infers Z (the output type) from the last expression and tells the compiler
-what Z is.
-;;
-result = do.(
-  one = 10
-  two = 20
-  one + two
-)
-
-;;
-## Scopes are structs
-
-Every block of code with its own scope, starting at module root and all the
-way down, is conceptually considered a struct. Variables are its fields.
-
-We could support evaluating arbitrary blocks as structs, _exactly_ like we do
-for modules.
-
-The block executes once. The result is a struct whose type is inferred by the
-compiler. Public procs from its scope are dumped into the caller's scope.
-This lets the caller access its variables (struct fields) and call procs.
-
-While we prefer to make declarations private by default, this example assumes
-that when turning a block into a struct, public is the default.
-;;
-
-val = struct.(
-  ;; Becomes a field. ;;
-  one = 10
-
-  ;; This side effect runs exactly once. ;;
-  stdout.println.[`intermediary value: ` one]
-
-  ;; Becomes a field. ;;
-  two = one + 20
-)
-stdout.println.(val.one)
-stdout.println.(val.two)
-
-
-;; If these variables are mutable, we can reassign them. ;;
-val.one = 40
-val.two = 50
-
-;;
-## Modules are structs
-
-Modules are blocks, and blocks are structs. Modules are structs. QED.
-
-This should simplify the implementation (no special treatment for module root).
-
-Additionally, we want to support the ability to "inherit" from a module and
-override some of its procs and constants. This should be doable by "including"
-all content of one struct in another, then adding various overrides.
-See [#module_level_overrides].
-;;
-include.`some_other_module`
-some_proc = fn.(my_override)
-
-;;
-In actual struct and dict literals, "include" might be emulated with a special
-field name, such as `*`. It splurges the content of another struct or dict into
-this one:
-;;
-some_struct = {
-  *          another_struct ;; Splurge all fields from `another_struct`. ;;
-  some_field `some_override`
-}
-some_dict = {
-  *               another_dict ;; Splurge all fields from `another_dict`. ;;
-  `another_field` nil          ;; Exclude this field. ;;
-  `some_field`    `some_override`
-}
-
-;;
-## Proc declarations
-
-First, see the section [#procs_and_calls] for proc signatures, proc patterns.
-
-Declaration ≠ definition. A declaration puts something in scope, possibly
-without an implementation. A definition is an anonymous implementation.
-
-There are 2 proc arities: `X -> Z` and `X Y -> Z`, and 6 ways of resolving.
-
-If module root is a struct literal, procs are declared with a field name
-followed by a proc definition / implementation.
-
-The examples below assume the existence of a hypothetical `fn` proc, provided
-either by the compiler or by the standard library. It takes an arbitrary
-expression and returns a proc implementation.
-
-The following defines and declares a program's entry point. This definition
-syntax is provisional. This definition does not specify input and output
-types, and is implicitly `Nil -> Nil`.
-;;
-main = fn.(stdout.println.`hello world`)
-
-;;
-If a proc `S X -> Z` is declared in the current scope, it can be called with
-the syntax `S.X`, and the proc itself is accessed with the syntax `X.S`:
-;;
-`hello_world`.len ;; 11 ;;
-Str.len           ;; Proc of type `Str -> Int`. ;;
-
-;;
-Since arity is fixed and the concepts `X -> Z` and `X Y -> Z` are prolific in
-this document, we might as well standardize the names X Y Z. In a declaration,
-they refer to the input and output _types_. In a definition, they refer to the
-input and output _values_.
-;;
-join_lines = fn.{
-  ;; Input type: must be a sequence of strings. ;;
-  X [Str]
-
-  ;; We haven't declared Y, so the proc is unary: `X -> Z`. ;;
-
-  ;; Output type: returns a string. ;;
-  Z Str
-
-  ;; Output implementation. ;;
-  Z (
-    cap = X.sum.(X.type.len) + X.len - 1
-    cap <= 0 ? ret.``
-    buf = Str.make.(cap)
-
-    join.{
-      src X
-      buf buf ;; BYOB ;;
-      sep "\n"
-    }
-  )
-}
-
-;; Closer to how most languages declare procs. ;;
-join_lines = fn.[
-  [Str] -> Str
-
-  cap = X.sum.(X.type.len) + X.len - 1
-  cap <= 0 ? ret.``
-  buf = Str.make.(cap)
-  join.{src X buf buf sep "\n"}
-]
-
-;;
-Perhaps a proc type, constructed in this example via `[Str] -> Str`,
-can be "called" to implement a proc of that type.
-;;
-join_lines = ([Str] -> Str).(
-  cap = X.sum.(X.type.len) + X.len - 1
-  cap <= 0 ? ret.``
-  buf = Str.make.(cap)
-  join.{src X buf buf sep "\n"}
-)
-
-;;
-Declaring a proc anonymously via `_` can  can be used to declare overloads for
-patterns `X -> Z` and `X Y -> Z` without giving them a symbolic name. See the
-sections [#procs_and_calls], [#proc_overloads], [#call_syntax].
-
-This proc makes it possible to call a `Str` with a `Uint`
-to access a byte at that index.
-;;
-_ = fn.{
-  X Str
-  Y Uint
-  Z Byte
-  Z (;;
-    (ensure data pointer is not nil)
-    (check bounds)
-    (pointer arithmetic)
-  ;;)
-}
-_ = fn.[
-  (Str Uint) -> Byte
-  ;; ... ;;
-]
-
-;; Usage: ;;
-`some_string`.10 ;; 'n' ;;
 
 ;;
 ## Catch-all procs
@@ -1629,58 +1604,16 @@ overload priority, but we already have that with regular overloads.
 ;;
 
 ;;
-## Proc delimiters
-
-Under consideration: if we could get rid of expression grouping,
-we could then reserve one set of delimiters entirely for procs.
-
-The trouble with this idea is that it's really hard to get rid of grouping.
-It's needed for some kinds of infix-heavy code, especially arithmetic.
-Additionally, grouping a single value allows to "escape" symbols in calls:
-
-  case.(some_value).{<cases>}
-;;
-
-add2 = (X + Y) ;; Declaration. ;;
-10 .add2. 20   ;; Usage. ;;
-
-;; Declaration ;;
-join_paragraphs = ("\n\n" .join. X)
-
-;; Usage ;;
-join_paragraphs.[`one` `two` `three`]
-
-;; Makes for a nicer "hello" program: ;;
-main = (log.`hello_world`)
-
-;;
-One really nice thing about proc-only delimiters
-is how they map naturally to blocks.
-
-Swift sets a nice precedent by using {} for blocks and closures alike, and
-allowing to pass a closure after the closing parentheses to functions which
-take a closure as the last argument. This allows to define custom control
-structures which looks exactly like the built-in keywords which take blocks.
-
-If we had proc delimiters, we would consistently use them for blocks,
-like in the "hello" example above.
-
-The following evaluates a block and returns its evaluated scope as a
-struct with the fields `one` and `two`:
-;;
-struct.(
-  one = 10
-  two = 20
-)
-
-;;
 ## Conditionals
 
 Like most of the language, conditionals should be defined in the standard
-library as compile-time procs. The compiler core shouldn't have to know
-anything about them. External libraries should be able to define more.
+library as immediate procs. The compiler core shouldn't have to know anything
+about them. External libraries should be able to define more.
 
 These are rough sketches. We have infinite possibilities.
+
+See [#refs] for an explanation on how "partially formed"
+conditionals could possibly work.
 ;;
 
 ;; Variadic `and`: ;;
@@ -1704,11 +1637,15 @@ one | two | three
 one | two | three | four
 
 ;;
-If-then-else could look like this.
-See [#refs] for an explanation.
+C-style ternary conditionals seem viable, but they
+can't use `:` because that's the pragma operator.
 ;;
-opt = if.(predicate).then.(expression)             ;; Ref Opt X -> Opt X ;;
-val = if.(predicate).then.(branch0).else.(branch1) ;; Ref X -> X ;;
+val = predicate ? branch0            ;; A.Opt.Ref -> A.Opt ;;
+val = predicate ? branch0 ! branch1  ;; A.Ref     -> A     ;;
+
+;; More verbose conditionals could be implemented as well. ;;
+opt = if.(predicate).then.(expression)             ;; A.Opt.Ref -> A.Opt ;;
+val = if.(predicate).then.(branch0).else.(branch1) ;; A.Ref     -> A     ;;
 
 ;; Multi-line: ;;
 val = if.(predicate)
@@ -1716,14 +1653,8 @@ val = if.(predicate)
   .else.(branch_else)
 
 ;;
-C-style ternary "if" should be easy to implement
-and will probably be preferred in the end.
-;;
-val = predicate ? branch0 : branch1
-
-;;
-A Lisp-style "if/then/else" should be easy to implement.
-Convenient to write, but less readable.
+A Lisp-style / lambda-calculus-style "if/then/else" should be easy to implement.
+Convenient to write, but less clear.
 ;;
 val = choice.(
   predicate
@@ -1732,51 +1663,62 @@ val = choice.(
 )
 
 val = case.(some_value).{
-  `possible_value_0` branch_0
-  `possible_value_1` branch_1
-  `possible_value_2` branch_2
-  _                  branch_default
+  `possible_value_0` = branch_0
+  `possible_value_1` = branch_1
+  `possible_value_2` = branch_2
+  _                  = branch_default
 }
 
 val = case.{
-  predicate_0 branch_0
-  predicate_1 branch_1
-  predicate_2 branch_2
-  _           branch_default
+  predicate_0 = branch_0
+  predicate_1 = branch_1
+  predicate_2 = branch_2
+  _           = branch_default
 }
 
 val = case.{
-  when some_predicate
-  then branch_then
-  else branch_else
+  when = some_predicate
+  then = branch_then
+  else = branch_else
 }
 
 case.{
-  when some_value
-  then log.`truthy`
-  else log.`falsy`
+  when = some_value
+  then = log.`truthy`
+  else = log.`falsy`
 }
 
 ;;
-Since we allow and heavily use duplicate keys in {} literals, we could easily
-support this keyword-style syntax as well. Like all other special expressions,
-this would be done entirely in (standard) library code, not in compiler core.
-External libraries can invent their own alternatives. That said, stdlib
-conditionals are likely to get special support from syntax highlighters.
+Since we allow duplicate keys in {} literals, we could easily support this
+keyword-style syntax as well. Like all other special expressions, this would be
+done entirely in (standard) library code, not in compiler core. External
+libraries can invent their own alternatives. That said, stdlib conditionals
+are likely to get special support from syntax highlighters.
 ;;
 case.{
-  when one   then two
-  elif three then four
-  elif five  then six
-  else seven
+  when = one   then = two
+  elif = three then = four
+  elif = five  then = six
+  else = seven
 }
+
+;;
+Some languages support `?.` or `.?` for optional chaining. We should be able to
+support this in library code, for "optional" types, by implementing `?` as a
+proc which discards the subsequent expression if the LHS is nil. Our version
+would be marginally more verbose, but not intrinsic to the compiler, and
+implementable for arbitrary library types:
+;;
+some_optional.?.some_proc
+some_optional.?.some_proc.another_proc
+some_optional.?.some_proc.`some_input`
 
 ;;
 ### Loops
 
 We provide the typical "while" and "iterate this collection" loops.
-If we ever provide CTO, it would probably require a special pragma
-for validating that the recursive call can actually become a loop.
+TCO-based recursion is not planned; if ever implemented, it would
+require explicit opt-in.
 
 It needs to be possible to implement the "iterate me" interface / protocol
 on arbitrary types. For regular dense arrays, this needs to have zero
@@ -1789,51 +1731,28 @@ The syntax is entirely undecided.
 ;;
 
 ;; Syntax is TBD. ;;
-ind = 0
+mut : ind = 0
 while.(predicate).(
   val = some_coll.(ind)
   ind.++
 )
-broke = while.(predicate).(
+result = while.(predicate).(
   val = some_coll.(ind)
-  if.(val == some_sentinel).(broke = val) ;; break ;;
+  val == some_sentinel ? val.break
   ind.++
 )
 
 ;; Syntax is TBD. ;;
-iter.(coll : val).(
+coll.iter.[val].(
   log.[`val: ` val]
 )
-iter.(coll : val key).(
+coll.iter.[val key].(
   log.[`val: ` val]
   log.[`key: ` key]
 )
-iter.(coll : _ key).(
+coll.iter.[_ key].(
   log.[`key: ` key]
 )
-
-;;
-### Truthiness
-
-There's "some" and "truthy".
-
-A value is considered "some" when it's not nil. Non-nilable types are
-automatically "some". Nilable types do a runtime check.
-
-A value is considered "truthy" if automatic conversion to `Bool` is
-implemented for its type and the result is `true`. This also applies
-to `Bool` since every type is automatically convertible to itself.
-
-`Nil` may be auto-convertible to `Bool`, in which case the result
-will always be `false`.
-
-We don't define other automatic conversions to `Bool`.
-User code should be free to define its own.
-
-Conditional forms such as `if` and `case` take `Bool` in predicate positions.
-Types which auto-convert to `Bool` can be passed in those positions without
-explicit conversion.
-;;
 
 ;;
 ## Type system
@@ -1847,7 +1766,7 @@ It also depends on how we bootstrap. The following is roughly in priority order,
 but not exactly.
 
 - Machine words.
-- Other integers (8bit / 16bit / 32bit / 64bit).
+- Other integers (various bit widths).
 - Floats (compiler doesn't need them until user programs do).
 - Fixed size arrays.
 - Variable-size lists (slices / vectors).
@@ -1982,8 +1901,8 @@ error prone or the errors become too obtuse, it should be possible to enforce
 explicit-only typing at the package level, via its config file:
 
   {
-    name   `enterprise_monorepo`
-    typing `explicit`
+    name   = `enterprise_monorepo`
+    typing = `explicit`
   }
 
 ### Generics and traits
@@ -2038,8 +1957,8 @@ for better error messages and maintainability. It should also be possible
 to enforce explicit generic constraints at package level:
 
   {
-    name            `enterprise_monorepo`
-    type_parameters `explicit`
+    name            = `enterprise_monorepo`
+    type_parameters = `explicit`
   }
 
 In explicit type parameter declarations, it would be nice to avoid having to
@@ -2053,18 +1972,14 @@ Simply taking a trait / interface should be equivalent to specifying that
 you take any concrete type conforming to that trait. The compiler should
 be able to specialize this proc:
 
-  fn.{
-    X fmt.Stringer
-    Z X.string
-  }
+  (fmt.Stringer -> Str) :
+  some_func = val -> val.string
 
 When the underlying concrete type is needed,
 there should be a simple way to retrieve it:
 
-  fn.{
-    X fmt.Stringer
-    Z log.[`underlying type: ` X.underlying_type]
-  }
+  (fmt.Stringer -> Str) :
+  some_func = val -> log.[`concrete type: ` val.concrete_type]
 
 Additional note. Over-specialization of generic code can bloat compilation
 time and executable size. Slim binaries are not on our priority list, but
@@ -2134,6 +2049,54 @@ to libraries.
 ;;
 
 ;;
+### Type instantiation syntax
+
+Types (and type kinds) generally use `Title_snake_case` naming.
+
+Instantiation of generic types uses the regular "call" syntax.
+No special syntax is introduced here.
+
+Generic types with only one mandatory parameter can be instantiated
+by being "called" with that parameter as-is.
+
+  Str.List    -- list of string
+
+Fixed-size byte array (compiler intrinsic for stdlib);
+size is arbitrary:
+
+  Memory.4
+  Memory.8
+  Memory.16
+  4.Memory    -- also valid
+
+Pointer / reference:
+
+  Int.Ptr
+  Str.Ref
+
+Dynamically-sized generic array (length is tracked separately):
+
+  Int.Arr
+  Str.Arr
+
+Fixed-size generic array:
+
+  Arr.[4 Int]
+  Arr.[4 Str]
+
+Similarly to our preference that procs should use named parameters, in the form
+of a struct, we may end up requiring named type parameters, even though it's
+notably clunky in the simple cases of 2 or 3 inputs:
+
+  Dict.{
+    key = Int
+    val = Str
+  }
+
+Open question: explicit type-parametrization of procs.
+;;
+
+;;
 ## Concurrency and IO
 
 Threads and synchronous IO will be supported in any case. However, highly
@@ -2146,8 +2109,8 @@ the current routine, with an option to opt out of blocking and get a future
 instead. We do not want the problem of "function color".
 
 Let's say all IO operations, regardless of IO implementation, return futures.
-Every `Fut X` is also a `Ref X` which _implicitly_ dereferences to X wherever
-X is expected. See [#refs] for more. Code which doesn't need to use a future's
+Every `A.Fut` is also an `A.Ref` which _implicitly_ dereferences to A wherever
+A is expected. See [#refs] for more. Code which doesn't need to use a future's
 value can simply pass that future to other code which does.
 
 Centering around async IO also plays nicely with the JS compilation target,
@@ -2283,27 +2246,22 @@ every union auto-implements every trait implemented by all member types.
 The language should provide convenient ways of annotating errors.
 For example (semi-pseudocode):
 ;;
-get_person = fn.{
-  X Person_id
-  Z Person
-  Z (
-    id = X
+(Person_id -> Person) :
+get_person = id -> (
+  ;;
+  Automatically deferred. If an exception occurs and matches
+  `db.err_not_found`, the exception is annotated with this
+  additional message, which is prepended to the message of
+  the wrapped error.
+  ;;
+  Error.only.(db.err_not_found).detail.[`unable to find user ` id]
 
-    ;;
-    Automatically deferred. If an exception occurs and matches
-    `db.err_not_found`, the exception is annotated with this
-    additional message, which is prepended to the message of
-    the wrapped error.
-    ;;
-    Error.only.(db.err_not_found).detail.[`unable to find user ` id]
-
-    ;;
-    Since this is the last expression, its result is
-    implicitly returned from this proc.
-    ;;
-    db.conn.query.[`select * from persons where id = $1` id].as.(Person)
-  )
-}
+  ;;
+  Since this is the last expression, its result is
+  implicitly returned from this proc.
+  ;;
+  Person : db.conn.query.[`select * from persons where id = $1` id]
+)
 
 ;;
 Setting exceptions and control flow aside, we may consider other forms of
@@ -2312,157 +2270,100 @@ end up with multiple compiler options which enable or disable those forms.
 Package configuration could look like:
 ;;
 {
-  enforce_types         true
-  explicit_control_flow true
+  enforce_types         = true
+  explicit_control_flow = true
 }
 
 ;;
 ## Pragmas
 
-Long-lived langs always seem to attract a desire for compile-time pragmas /
-annotations / decorators. In interpreted languages such as JS or Python, this
-may be called "design-time" rather than "compile-time", but the use cases are
-the same.
+Many kinds of declaration metadata are unavoidable:
+- Types of symbols.
+- Signatures of procedures.
+- Private or public.
+- Constant or mutable.
+- Other context-sensitive modifiers, like `volatile`.
+- Optional compiler hints.
+- Call convention modifiers.
+- Wrapping procs for debugging.
+- Experimental language features.
+- Library-specific annotations (JSON field names, etc.).
 
-Use cases include:
-- Optional compiler hints for micro-optimization (C / C++).
-- Reconfiguring compiler behavior for the current file (Haskell, Nim).
-- Invoking compile-time procs which transform var / proc behavior,
-  without changing var / proc declaration syntax (Rust, Nim, Haskell).
-- Wrapping procs to add some prolog and/or epilog (like timing logging).
-- Complying with demands for explicit annotations (`@Override` in Java).
+Many languages end up with loads of dedicated syntax, keywords, and so on.
+We aim to solve all metadata needs with pragmas.
 
-Conceptually, Java's `public private final volatile synchronized` etc.
-are all "pragmas", just like `@Override`.
+Pragmas assign metadata to AST nodes, which is inspected by the compiler and
+various immediate procs which operate on the AST, such as `=` and `->`.
 
-A lot of languages start without general-purpose pragmas, but with a bunch of
-special-case keywords and other syntax for various features, such as private
-vs public. Languages accumulate features over time. New features often come
-with new syntax, progressively complicating the language.
-
-Some newer languages look at that, and ship with general-purpose syntax for
-pragmas, to keep from having to add new syntax for features which can be
-expressed with annotations. Notable examples include Nim, Rust, Haskell.
-
-Given that our language has no keywords, we need pragmas even for basic stuff
-like "public" or "mutable".
-
-### Declaration modifiers
-
-This is a subset of the pragma use case. We need the ability to specify
-additional metadata about variables / fields, proc parameters, etc.
-
-Examples include:
-- This symbol is public.
-- This variable / field is mutable.
-- This type is immutable once constructed.
-- This type can't be copied.
-- This parameter must be a constant.
-- This parameter must be a literal.
-
-### Solutions
-
-Since we have symbol overloading, pragmas could be simply `S -> Pragma` where
-the type `Pragma` is built in, and the compiler knows to look for it.
-
-In blocks, we could borrow Haskell's syntactic approach, using a hypothetical
-compile-time operator `::` which defines `S -> P`.
-
-In structs, a field pragma is simply a field overload with the `Pragma` type.
-
-Since typing `Pragma` everywhere is tiring, we could alias it to `::`.
+Tentatively (subject to revision), this is done via the immediate proc `:`.
+The proc is right-associative and stackable. It's prepended to declarations:
 ;;
+pub : some_var = `some_value`
 
-;; Simplest case: one boolean modifier. ;;
-Some_type :: pub
-Some_type = struct.{}
-
-;; Same as above, but using the type name instead of `::`. ;;
-Some_type = Pragma.pub
-
-;; Simple case: list of boolean modifiers. ;;
-some_proc :: [pub inline]
-some_proc = fn.(<some_code>)
-
-;; More complex case: parametrized modifiers. ;;
-Some_type :: [derive.Debug derive.Show json.camel]
-Some_type = struct.{}
-
-;; Optional key-value approach for more complex cases. ;;
-Some_type :: {
-  pub         true
-  json_fields json.camel
-  sql_fields  sql.snake
+;; Type is public, fields are private: ;;
+pub : Some_type = struct.{
+  one = Int
+  two = Int
 }
-Some_type = struct.{}
 
-;; It should be possible to reuse pragmas. ;;
+;; Type _and_ fields are public: ;;
+pub : Some_type = pub : struct.{
+  one = Int
+  two = Int
+}
+
+;; More specialized: ;;
+pub : Some_type = struct.{
+  pub : one = Int ;; Public, immutable. ;;
+  mut : two = Int ;; Private, mutable. ;;
+}
+
+;; Mutable local variable: ;;
+mut : some_var = `some_val`
+
+;; Public mutable variable (unsynchronized 😅): ;;
+pub : mut : some_var = `some_val`
+
+;; Could we make pragmas reusable? ;;
 Model = Pragma.{
-  pub         true
-  derive      [derive.Debug derive.Show]
-  json_fields json.camel
-  sql_fields  sql.snake
+  pub         = true
+  derive      = [derive.Debug derive.Show]
+  json_fields = json.camel
+  sql_fields  = sql.snake
 }
 
 ;; Reuse the `Model` pragma. ;;
-Person = Model
+Model :
 Person = struct.{
-  id   Uuid
-  name string
+  id   = Uuid
+  name = string
 }
 
 ;; Reuse the `Model` pragma. ;;
-Session = Model
+Model :
 Session = struct.{
-  id        Uuid
-  person_id Uuid
-}
-
-;; Making a variable mutable. Seems awkward. ;;
-val :: mut
-val = 123
-
-;; The `=` operator could support the following instead: ;;
-(val Int mut) = 123
-(INDENT Str pub mut synchronized) = `  `
-
-;; Module-level and scope-level pragmas are anonymous: ;;
-_ = ::.{
-  vis `package`             ;; Visible only in current package. ;;
-  pub [Some_type some_proc] ;; Declare exports in one place. ;;
-}
-Some_type = struct.{
-  _          ::.pub ;; Type and fields are public. ;;
-  some_field Int
-}
-
-;; Module-level mutable field. ;;
-INDENT :: [pub mut synchronized]
-INDENT `  `
-
-;;
-Offtopic; move to a [#types] section later.
-Structs should be able to "inherit" by splurging.
-This is similar to struct embedding in Go.
-;;
-Ided struct.{id Uuid}
-Named struct.{name Str}
-Timed struct.{created_at Time updated_at Time}
-Person struct.{
-  *     Ided
-  *     Named
-  *     Timed
-  email Str
+  id        = Uuid
+  person_id = Uuid
 }
 
 ;;
-(Offtopic continued.)
-Unlike in Go, splurged fields should be usable at the top level in literals:
+Pragmas could be RHS-oriented with a dedicated operator.
+Unsuitable for variables (makes syntax highlighting harder),
+but could be useful elsewhere.
 ;;
-person = Person.{
-  id   some_uuid
-  name `some_name`
+some_int :: Int = 123
+
+;; How to define module-level pragmas? Maybe anonymously. ;;
+_ :: {
+  vis = `package`             ;; Visible only in current package. ;;
+  pub = [Some_type some_proc] ;; Declare exports in one place. ;;
 }
+
+;;
+Worth reiterating that none of this involves special syntax.
+This just uses a regular immediate proc (bound to an operator)
+which attaches metadata to the AST nodes it receives.
+;;
 
 ;;
 ## Math
@@ -2513,6 +2414,29 @@ arithmetic behaviors to different variables / fields, in a controllable yet
 mix-and-match way. Doing this at the type level seems like the most natural
 centerpiece. We provide several variants of each numeric type, differing in
 how they handle arithmetic operators.
+;;
+
+;;
+### Truthiness
+
+There's "some" and "truthy".
+
+A value is considered "some" when it's not nil. Non-nilable types are
+automatically "some". Nilable types do a runtime check.
+
+A value is considered "truthy" if automatic conversion to `Bool` is
+implemented for its type and the result is `true`. This also applies
+to `Bool` since every type is automatically convertible to itself.
+
+`Nil` may be auto-convertible to `Bool`, in which case the result
+will always be `false`.
+
+We don't define other automatic conversions to `Bool`.
+User code should be free to define its own.
+
+Conditional forms such as `if` and `case` take `Bool` in predicate positions.
+Types which auto-convert to `Bool` can be passed in those positions without
+explicit conversion.
 ;;
 
 ;;
@@ -2615,6 +2539,9 @@ are modules, such as Go, it's far too easy to accidentally end up with a
 bloated "main" module which takes forever to compile and is impractical to
 split up at that point. Files have the right level of modularity and
 naturally lend themselves to caching and lazy loading.
+
+Implicitly lazy imports, if we're able to pull them off, would also be excellent
+for bundle splitting and async imports in the JS compilation target.
 
 ### Native watch mode
 

@@ -5,18 +5,18 @@ But having a DSL for simple operations is quite justifiable.
 ;;
 
 sql.create_domain.{
-  name ident
-  from text
-  constraint {
-    name  db.constraint.ident
-    check value ~ `^[a-z][a-z_0-9]{1,255}$`
+  name       = ident
+  from       = text
+  constraint = {
+    name  = db.constraint.ident
+    check = value ~ `^[a-z][a-z_0-9]{1,255}$`
   }
 }
 
 ;; Old example. Advice: avoid enums, use pseudo-enum tables. ;;
 sql.create_type.{
-  name ident_type
-  impl enum.[
+  name = ident_type
+  impl = enum.[
     `email_login`
     `email_change`
     `facebook`
@@ -26,49 +26,49 @@ sql.create_type.{
 
 ;; Assumes that `not null` is the implicit default. ;;
 sql.create_table.{
-  name idents
-  cols [
+  name = idents
+  cols = [
     {
-      name    id
-      type    uuid
-      default gen_random_uuid
+      name    = id
+      type    = uuid
+      default = gen_random_uuid
 
       ;; Full style. ;;
-      constraint {
-        name    db.constraint.idents.id
-        primary true
+      constraint = {
+        name    = db.constraint.idents.id
+        primary = true
       }
 
       ;; Shorthand style. ;;
-      constraint [db.constraint.idents.id primary]
+      constraint = [db.constraint.idents.id primary]
     }
 
     ;; Shorthand style. ;;
     [type ident_type]
 
     {
-      name person_id
-      type uuid
-      null true
+      name = person_id
+      type = uuid
+      null = true
 
       ;; Full style. ;;
-      constraint {
-        name    db.constraint.idents.person_id
-        foreign persons
-        cascase true
+      constraint = {
+        name    = db.constraint.idents.person_id
+        foreign = persons
+        cascase = true
       }
 
       ;; Shorthand style. ;;
-      constraint [db.constraint.idents.person_id foreign.persons cascade]
+      constraint = [db.constraint.idents.person_id foreign.persons cascade]
 
       ;; Full style. ;;
-      constraint {
-        name   db.constraint.idents.person_id.unique
-        unique true
+      constraint = {
+        name   = db.constraint.idents.person_id.unique
+        unique = true
       }
 
       ;; Shorthand style. ;;
-      constraint [db.constraint.idents.person_id.unique unique]
+      constraint = [db.constraint.idents.person_id.unique unique]
     }
 
     [email email]
@@ -76,46 +76,46 @@ sql.create_table.{
     [external_profile_json jsonb null]
 
     {
-      name oauth_access_token
-      type short_text
-      constraint {
-        name  db.constraint.idents.oauth_access_token
-        check value <> ``
+      name       = oauth_access_token
+      type       = short_text
+      constraint = {
+        name  = db.constraint.idents.oauth_access_token
+        check = value <> ``
       }
     }
 
     {
-      name oauth_refresh_token
-      type short_text
-      constraint {
-        name  db.constraint.idents.oauth_refresh_token
-        check value <> ``
+      name       = oauth_refresh_token
+      type       = short_text
+      constraint = {
+        name  = db.constraint.idents.oauth_refresh_token
+        check = value <> ``
       }
     }
   ]
 
-  constraint {
-    name  db.constraint.idents.state
-    check case.(type).{
-      `email_login` and.[
+  constraint = {
+    name  = db.constraint.idents.state
+    check = case.(type).{
+      `email_login` = and.[
         person_id             .is_null
         email                 .is_not_null
         external_id           .is_null
         external_profile_json .is_null
       ]
-      `email_change` and.[
+      `email_change` = and.[
         person_id             .is_not_null
         email                 .is_not_null
         external_id           .is_null
         external_profile_json .is_null
       ]
-      `facebook` and.[
+      `facebook` = and.[
         person_id             .is_not_null
         email                 .is_null
         external_id           .is_not_null
         external_profile_json .is_not_null
       ]
-      `google` and.[
+      `google` = and.[
         person_id             .is_not_null
         email                 .is_null
         external_id           .is_not_null
@@ -126,20 +126,20 @@ sql.create_table.{
 }
 
 sql.create_unique_index.{
-  table idents
-  name  `d0197d38492f41da819c951f4199137a`
-  cols  person_id
-  where type .in. [`facebook` `google`]
+  table = idents
+  name  = `d0197d38492f41da819c951f4199137a`
+  cols  = person_id
+  where = type.in.[`facebook` `google`]
 }
 sql.create_unique_index.{
-  table idents
-  name  `93e2b5ad17414d85aaa743901055bad8`
-  cols  external_id
-  where type == `facebook`
+  table = idents
+  name  = `93e2b5ad17414d85aaa743901055bad8`
+  cols  = external_id
+  where = type == `facebook`
 }
 sql.create_unique_index.{
-  table idents
-  name  `8038f703a10547f6aa91a5a2996ba73c`
-  cols  external_id
-  where type == `google`
+  table = idents
+  name  = `8038f703a10547f6aa91a5a2996ba73c`
+  cols  = external_id
+  where = type == `google`
 }

@@ -10,13 +10,14 @@ The world needs a final programming language for everything.
   * Embedded devices. Can be delayed, but must be planned for.
 * Statically typed.
 * AOT compilation out of the box.
-* Tiered JIT out of the box.
-  * May involve an interpreter, may involve bytecode and a VM for "cold" paths. The final JIT tier and AOT compilation should generate the same code.
-  * Running a script does not involve compiling a binary to disk and running it; it simply uses JIT. Startup must be fast.
-  * Calling a new executable has multiple issues:
+* Incremental JIT compilation out of the box.
+  * Support running a program directly in the compiler's process, with lazy JIT, similar to what JS engines do.
+  * AOT and JIT use the same compiler backend.
+  * Later on, we could implement an interpreter for "colder" code as a performance optimization.
+  * Sidenote: invoking a new executable in development has multiple issues:
     * Huge first-time latency on MacOS as the OS validates the file; takes seconds for large executables.
     * Disk pollution.
-* Arbitrary compile-time evaluation (via tiered JIT).
+* Arbitrary compile-time evaluation (via JIT).
 * Runtime code loading and JIT compilation in both development _and_ production (with static AOT in production builds).
   * Use cases:
     * Fast development (with hot code reloading).
@@ -117,5 +118,6 @@ The world needs a final programming language for everything.
   * APE: "actually portable executable". This format allows the same file to execute on every major OS, as well as being bootable.
   * Cosmopolitan Libc allows C programs to run on every major OS, abstracting away syscall differences. We could do something similar. This involves bundling all syscall implementations in the executable, and detecting at runtime what to use.
 * Support compilation to multiple targets (platforms, architectures) in a single run of the compiler (parse / analyze / optimize just once, proceed to emit code).
+* Ship with a REPL, _and_ an option to run a given program, preferably in watch mode, with a REPL _into the running program_. Useful for debugging, exploring program state. It should also be possible to modify the program on the fly by redefining things.
 
 See `./lang.mox` for more.

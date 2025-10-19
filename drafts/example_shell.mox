@@ -40,16 +40,16 @@ the user. The important part is that commands are callable, with or without
 arguments. See below.
 ;;
 
-ls                                      ;; Works due to `repl_eval`. ;;
-ls.nil                                  ;; Horrible but valid alternative. ;;
-. ls                                    ;; Less bad alternative. ;;
-ls.{all true dot true}                  ;; So verbose. ;;
-ls.some_path                            ;; Might be valid. ;;
-ls.`some_dir/some_file`                 ;; Quotes are often needed anyway. ;;
-ls.{path `some_dir/some_file` all true} ;; So verbose. ;;
-ls.(-alhFG `some_dir/some_file`)        ;; Parser might complain. ;;
-ls.`-alhFG some_dir/some_file`          ;; What if you have to quote the path? ;;
-ls.`-alhFG "some_dir/some_file"`        ;; Sub-quotes. ;;
+ls                                          ;; Works due to `repl_eval`. ;;
+ls.nil                                      ;; Horrible but valid alternative. ;;
+. ls                                        ;; Less bad alternative. ;;
+ls.{all = true dot = true}                  ;; So verbose. ;;
+ls.some_path                                ;; Might be valid. ;;
+ls.`some_dir/some_file`                     ;; Quotes are often needed anyway. ;;
+ls.{path = `some_dir/some_file` all = true} ;; So verbose. ;;
+ls.(-alhFG `some_dir/some_file`)            ;; Parser might complain. ;;
+ls.`-alhFG some_dir/some_file`              ;; What if you have to quote the path? ;;
+ls.`-alhFG "some_dir/some_file"`            ;; Sub-quotes. ;;
 
 man.some_command
 which.some_command
@@ -79,14 +79,14 @@ make.`recipe arg0=val0 arg1=val1`
 ;;
 ## Composition
 
-The pipe operator is a compile-time proc which treats its LHS and RHS
+The pipe operator is an immediate proc which treats its LHS and RHS
 as top-level REPL commands and pipes from LHS to RHS. It also supports
 `repl_eval` for its operands.
 ;;
 ls | grep.some_word
 
 ;;
-Redirect. `>>` is a compile-time proc which treats the LHS as a top-level
+Redirect. `>>` is an immediate proc which treats the LHS as a top-level
 REPL command, and the RHS as a file to write to.
 ;;
 cat.`./readme.md` >> `out.txt`

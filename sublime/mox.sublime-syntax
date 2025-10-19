@@ -9,113 +9,119 @@ file_extensions: [mox]
 # - Struct fields should have `variable.other.member.declaration.mox` in struct
 #   declarations and regular `variable.other.member.mox` at usage sites.
 # - Support destructuring in declarations.
-# - In declarations, differentiate kinds: type / function / value.
+# - In declarations, differentiate kinds: type / proc / value.
 #   - Needed for indexing types and functions declared in nested scopes.
-# - In declaration positions, disallow operators (due to ambiguity).
-# - In declaration positions, support strings-as-symbols (for disambiguation).
 # - Put `meta.type` scopes into type literals.
-# - Consider always scoping `X Y Z` symbols as parameters.
 
 variables:
   line_start: '^\s*'
-  sym_unqual: (?<!{{dot}}){{sym}}
-  ident_unqual: (?<!{{dot}})[{{ident_chars}}]+(?![{{oper_chars}}])
-  oper_unqual: (?<!{{dot}})[{{oper_chars}}]+(?![{{ident_chars}}])
+  ident_type: '{{ident_begin}}[A-Z][{{ident_chars}}]*{{ident_end}}'
+  ident_not_type: '{{ident_begin}}[a-z_][{{ident_chars}}]+{{ident_end}}'
 
 contexts:
   main:
     - match: (?=\S)
       push: expr-pop
 
-  sym-assign-pop:
-    - match: '(_)\s+(=)(?=\s|$)'
+  expr-pop:
+    - include: sym-prefix-call-match
+    - include: sym-declaration-pop
+    - include: pragma-prefix-pop
+    - include: arrow-param-prefix-pop
+    - match: (?=\S)
+      set: [after-expr-pop, expr-base-pop]
+
+  # After any expression, this context checks if it's followed by a dot
+  # or operator, grouping it with the next expression.
+  after-expr-pop:
+    - match: '{{dot}}'
+      scope: punctuation.accessor.mox
+      set: after-dot-pop
+
+    - match: '{{oper}}'
+      scope: keyword.operator.mox
+      pop: 1
+
+    - match: (?=\S)
+      pop: 1
+
+  after-dot-pop:
+    - match: '{{sym}}'
+      scope: variable.function.mox
+      pop: 1
+
+    - match: (?=\S)
+      pop: 1
+
+  # Scope "escaped" operators as neutered: `(*)`.
+  # This must run AFTER handling declarations via `=`,
+  # otherwise it breaks them. For that reason, we handle
+  # declarations first in `expr-pop`, which calls this
+  # context internally after handling such special cases.
+  paren-pop:
+    - meta_prepend: true
+    - match: (\()\s*({{oper}})\s*(\))
+      captures:
+        1: punctuation.section.parens.begin.mox
+        2: variable.language.blank.mox
+        3: punctuation.section.parens.end.mox
+      pop: 1
+
+  # Stuff like:
+  #
+  #   some_proc."some_input"
+  #   -.123
+  #
+  # But NOT stuff like:
+  #
+  #   some_struct.some_field
+  #   some_val.&
+  #   some_num.-
+  #
+  # This is a match and not a pop, because it's part of an expression,
+  # grouped with whatever follows.
+  sym-prefix-call-match:
+    - match: '({{sym}})\s*({{dot}})(?!\s*{{sym}})'
+      captures:
+        1: variable.function.mox
+        2: punctuation.accessor.mox
+
+  sym-declaration-pop:
+    - match: '{{ident_begin}}(_)\s*(=){{oper_end}}'
       captures:
         1: variable.language.blank.mox
         2: keyword.operator.assignment.mox
-      set: expr-pop
-    # Known false positive: in `one. two = 123`,
-    # `two` is scoped as declaration.
-    - match: '({{sym}})\s+(=)(?=\s|$)'
+      pop: 1
+
+    - match: (\()\s*({{oper}})\s*(\))\s*(=){{oper_end}}
+      captures:
+        1: punctuation.section.parens.begin.mox
+        2: variable.declaration.mox
+        3: punctuation.section.parens.end.mox
+        4: keyword.operator.assignment.mox
+      pop: 1
+
+    - match: '({{ident}})\s*(=){{oper_end}}'
       captures:
         1: variable.declaration.mox
         2: keyword.operator.assignment.mox
-      set: expr-pop
+      pop: 1
 
-  expr-pop:
-    - match: ''
-      set: [expr-postfix-join, expr-base-pop]
+  pragma-prefix-pop:
+    - match: '{{ident}}(?=\s*:{{oper_end}})'
+      scope: storage.modifier.pragma.mox
+      pop: 1
 
-  expr-postfix-join:
-    - match: (?={{dot}})
-      set: expr-pop
-
-    # An unqualified operator is binary.
-    - match: '{{oper_unqual}}'
-      scope: keyword.operator.mox
-      set: expr-pop
-
-    - match: (?=\S)
+  arrow-param-prefix-pop:
+    - match: '{{ident_not_type}}(?=\s*->{{oper_end}})'
+      scope: variable.parameter.mox
       pop: 1
 
   sym-pop:
     - meta_prepend: true
-    - include: sym-dot-end-match
     - include: sym-const-pop
-    - include: sym-assign-pop
-    - include: sym-call-prefix-pop
-    - include: sym-call-suffix-pop
-    - include: sym-dot-match
-
-  sym-dot-end-match:
-    - match: '{{sym}}(?={{dot}}{{sym}})'
-      scope: variable.other.mox
-    - match: '{{sym}}(?={{dot}})'
-      scope: variable.function.mox
 
   sym-const-pop:
-    - match: '{{sym_begin}}(?:true|false|nil){{sym_end}}'
+    - match: '{{ident_begin}}(?:true|false|nil){{ident_end}}'
       scope: constant.language.mox
       pop: 1
-
-  sym-call-suffix-pop:
-    - match: ({{dot}})({{sym}})
-      captures:
-        1: punctuation.accessor.mox
-        2: variable.function.mox
-      pop: 1
-
-  sym-dot-match:
-    - match: '{{dot}}'
-      scope: punctuation.accessor.mox
-
-  brace-pop:
-    - match: \}
-      scope: punctuation.section.braces.end.mox invalid.illegal.mox
-      pop: false
-    - match: \{
-      scope: punctuation.section.braces.begin.mox
-      set: [brace-meta, brace-key-pop]
-
-  brace-meta:
-    - meta_scope: meta.braces.mox
-    - include: now-pop
-
-  brace-key-pop:
-    - include: brace-end-pop
-    - match: '{{sym}}'
-      scope: variable.other.member.declaration.mox
-      set: brace-val-pop
-    - match: (?=\S)
-      set: [brace-val-pop, brace-expr-pop2]
-
-  brace-val-pop:
-    - include: brace-end-pop
-    - match: (?=\S)
-      set: [brace-key-pop, expr-pop]
-
-  brace-expr-pop2:
-    - match: \}
-      scope: punctuation.section.braces.end.mox
-      pop: 2
-    - match: (?=\S)
-      set: expr-pop

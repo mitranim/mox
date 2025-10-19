@@ -4,65 +4,18 @@ and solutions / disambiguations.
 ;;
 
 ;;
-## Operator declarations
+## (Solved) Operator declarations
 
-To implement operators, you have to actually declare them. We have two ways
-of declaring stuff: procedural assignment and struct fields.
-
-Operator-looking symbols without a dot on either side are always treated as
-binary infix and combined with the expressions on both sides. This takes
-priority over being in field name position, and over being in the LHS of
-a declaration operator.
-
-The ambiguity arises because we refuse to use separator characters
-such as commas, we're newline-insensitive, and the only precedence
-rule for binary infix is left associativity.
-
-The provisional solution is to allow strings instead of symbols in all
-declaration positions. It's been demonstrated to be acceptable in JS,
-where names of class fields and methods can be declared with strings.
-Syntax highlighters support those declarations just fine. However,
-this raises the issue of how to access such fields later on. Operator
-fields are accessed with symbols as usual, but what if someone wants
-to use a field named `my awesome field` (with spaces)? For now, the
-field would be inaccessible.
-
-We don't consider this a gotcha because syntax highlighting makes this
-obvious, as long as it's correctly implemented. Compiler can give clear
-errors too.
+Operators can be "escaped" by "grouping":
 ;;
+(*) = 123
 
-;; Not what it looks like. ;;
 Person = struct.{
-  Id    Uuid
-  *     Named
-  *     Timed
-  email Str
+  id    = Uuid
+  (*)   = Named ;; splurge another type ;;
+  (*)   = Timed ;; splurge another type ;;
+  email = Str
 }
-
-;; This is what actually happens. ;;
-Person = struct.{
-  Id    Uuid * Named * Timed
-  email Str
-}
-
-;; Workaround. ;;
-Person = struct.{
-  Id    Uuid
-  `*`   Named
-  `*`   Timed
-  email Str
-}
-
-;; Not what it looks like. ;;
-some_preceding_expression
-+ = fn.(asm.i32_add.[X Y])
-
-;; Becomes this and doesn't compile. ;;
-some_preceding_expression + = fn.(asm.i32_add.[X Y])
-
-;; Provisional solution. ;;
-`+` = fn.(asm.i32_add.[X Y])
 
 ;;
 ## Groups vs tuples
@@ -77,42 +30,97 @@ in library code, for cases where tuples are best.
 ;;
 
 ;;
-## Unary and binary calls
+## (Solved) Unary and binary calls
 
-Our call syntax has what may seem like a built-in ambiguity in symbol chains.
-The following could be seen as representing either an unary or a binary call:
+All of the following used to be different from each other:
 ;;
-one.two.three
-
-;;
-However, at the data notation level, we disambiguate this
-by splitting symbols at dots, turning into 2 unary calls:
-;;
-one .two .three
+one.two.three   ;; postfix unary, postfix unary ;;
+one. two.three  ;; prefix unary, postfix unary ;;
+one. two. three ;; prefix unary, prefix unary;;
+one .two. three ;; binary ;;
 
 ;;
-Binary symbolic calls can be used by splitting in different places manually:
+Now all procs are unary, dots are split off, and all of the above
+are parsed and interpreted identically to the following:
 ;;
-one .two. three
+(one . two) . three
 
-;;
-However, this creates a perverse incentive to manually overload each symbolic
-binary proc with an unary variant which returns a curried unary proc, allowing
-to call it without the preceding space. The following assumes that the current
-scope has an unary proc `two` which can be called on `one` and returns an unary
-proc which can be called on `three`:
-;;
-one.two. three
+;; Inherently "binary" procs like `map` are defined as `A -> B -> C`: ;;
+map = list -> fun -> (
+  buf = list.type.alloc.(list.len)
+  list.iter.(val ind).(
+    buf.ind.& = val.fun
+  )
+  buf
+)
 
-;;
-This is very similar to auto-bound methods in Go and Python. Since it's such a
-common use case, we might go ahead and make it built-in: for every binary proc,
-the compiler auto-defines an unary currying variant. If this creates too many
-naming conflicts, we would abandon the feature or make it opt-in.
-
-The following code assumes that `map` was only defined as a binary proc,
-but the compiler auto-derived an unary version.
-;;
+;; Usage: ;;
 src = [10 20 30]
-out = src.map. fn.(X * 2)  ;; curried unary ;;
-out = src .map. fn.(X * 2) ;; actual binary ;;
+out = src.map.(val -> val * 2)
+
+;; Where `src.map` actually returns a "curried" closure: ;;
+out = (src.map).(val -> val * 2)
+
+;;
+Unlike Haskell, we can't define this shorthand auto-currying syntax:
+
+  fun one two three = another_fun one two three
+
+By design, our call notation is incompatible with this.
+Homogeneous procs should take a list, and heterogeneous
+procs should take a struct (named parameters):
+
+  proc = vals -> vals.another_proc
+  proc = [A B C] -> A + B + C
+  proc = {arg0 = Type0 arg1 = Type1} -> do_stuff
+
+Our call notation automatically discourages long-arity procs
+such as `Int -> Int -> Int -> Int -> Int` because the calls
+are horrible to type and read:
+;;
+mul4.10.20.30.40
+mul4.(one).(two).(three).(four)
+
+;; Just pass a list: ;;
+*.[10 20 30 40]
+*.[one two three four]
+
+;;
+## Proc types vs proc implementations
+
+First, a comparison. Haskell uses chains of `->` for type signatures _and_
+inline functions, and disambiguates them in multiple orthogonal ways.
+
+  λ a b c -> a + b + c -- inline function; may not occur in type positions
+  Int -> Int -> Int    -- can only occur in type positions
+  Int -> (Int -> Int)  -- implicit right-association
+  a -> b -> c -> d     -- can only occur in type positions
+  a -> (b -> (c -> d)) -- implicit right-association
+
+`λ` in Haskell is basically a keyword, a parser special case.
+
+We'd like to use `->` for proc types _and_ implementations.
+We have no special parser rules for proc types and values.
+Both are created by immediate procs invoked with regular
+proc call syntax. They need to be disambiguated contextually.
+;;
+
+;;
+We have to make `->` right-associative. This also means we can make arbitrary
+operators right-associative. Incidentally, this now includes `:`.
+;;
+Int -> Int -> Int -> Int
+Int -> (Int -> (Int -> Int))
+
+;;
+Proc types do not contain parameter names. If the LHS of `->` denotes a type,
+the RHS must also denote a type, and the result is a proc type.
+;;
+Int -> Int
+Int -> Int -> Int
+
+;; LHS of `->` in proc implementations must contain parameter names: ;;
+one     -> one     ;; generic identity function ;;
+Int:one -> Int:one ;; specialized identity function ;;
+one     -> two     ;; `one` is ignored, `two` must be in scope ;;
+Int:one -> Int:two ;; `one` is ignored, `two` must be in scope ;;

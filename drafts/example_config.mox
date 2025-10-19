@@ -1,20 +1,20 @@
 {
-  pkg_name `some_package`
-  pkg_ver  `0.0.1`
-  lang_ver `0.1.0`
-  author   `Some Author`
-  license  `https://example.com/example_license`
+  pkg_name = `some_package`
+  pkg_ver  = `0.0.1`
+  lang_ver = `0.1.0`
+  author   = `Some Author`
+  license  = `https://example.com/example_license`
 
-  deps [
+  deps = [
     {
-      name lib_0
-      repo `https://one.two/three.git`
-      tag  `0.1.0`
+      name = lib_0
+      repo = `https://one.two/three.git`
+      tag  = `0.1.0`
     }
     {
-      name lib_1
-      repo `https://one.two/four.git`
-      tag  `0.2.0`
+      name = lib_1
+      repo = `https://one.two/four.git`
+      tag  = `0.2.0`
     }
   ]
 }

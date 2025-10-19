@@ -19,17 +19,25 @@ variables:
   string_double_delim: '"'
   string_double_fence: '({{string_double_delim}}+)(?!{{string_double_delim}})'
 
-  delim_chars: '\s\{\}\[\]\(\)'
-  oper_chars: '\~\!\@\#\$\%\^\&\*\:\<\>\?\/\\\|\=\+\-'
-  ident_chars: \w
   int_bin: '[0-1][0-1_]*'
   int_oct: '[0-7][0-7_]*'
   int_dec: '[0-9][0-9_]*'
   int_hex: '[0-9a-f][0-9a-f_]*'
-  sym_begin: (?<![{{sym_chars}}])(?![+-]?\d_?)
-  sym_end: (?![{{sym_chars}}])
-  sym_chars: '{{ident_chars}}{{oper_chars}}'
-  sym: '{{sym_begin}}[{{sym_chars}}]+{{sym_end}}'
+
+  delim_chars: '\s\{\}\[\]\(\)'
+  oper_chars: '\~\!\@\#\$\%\^\&\*\:\<\>\?\/\\\|\=\+\-'
+  ident_chars: \w
+  ident_begin_char: '[A-Za-z_]'
+
+  ident_begin: '\b'
+  ident_end: '\b'
+  oper_begin: (?<![{{oper_chars}}])
+  oper_end: (?![{{oper_chars}}])
+
+  ident: '{{ident_begin}}{{ident_begin_char}}[{{ident_chars}}]*{{ident_end}}'
+  oper: '{{oper_begin}}[{{oper_chars}}]+{{oper_end}}'
+  sym: '(?:{{ident}}|{{oper}})'
+
   dot: \.
   eol: (?:\n|$)
 
@@ -269,12 +277,11 @@ contexts:
       pop: 1
 
   sym-pop:
-    - match: '{{sym_begin}}_{{sym_end}}'
+    - match: '{{ident_begin}}_{{ident_end}}'
       scope: variable.language.blank.mox
       pop: 1
-    # Always scoping operator-looking symbols as operators is traditional
-    # in Sublime and can be neat for syntactic experiments.
-    - match: '(?<![{{ident_chars}}])[{{oper_chars}}]+(?![{{ident_chars}}])'
+    # Every operator is a call, one way or another.
+    - match: '{{oper}}'
       scope: keyword.operator.mox
       pop: 1
     - match: '{{sym}}'
