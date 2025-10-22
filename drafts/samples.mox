@@ -74,13 +74,13 @@ Essential for targeting different platforms with the same code.
 
 Syntax is TBD.
 ;;
-(compiler.os == `linux`) & (compiler.arch = `x86`) #->
+(compiler.os == `linux`) & (compiler.arch == `x86`) #->
 SYSCALL_READ = 3
 
-(compiler.os == `linux`) & (compiler.arch = `x64`) #->
+(compiler.os == `linux`) & (compiler.arch == `x64`) #->
 SYSCALL_READ = 0
 
-(compiler.os == `linux`) & (compiler.arch = `arm64`) #->
+(compiler.os == `linux`) & (compiler.arch == `arm64`) #->
 SYSCALL_READ = 63 ;; 🤯 ;;
 
 ;;
@@ -158,7 +158,7 @@ _ = proc0.123
 _ = proc1.[123 `str` true]
 
 ;; Destructure by listing field names. ;;
-(three four) = proc2.{one = 123 two = `str`}
+{three four} = proc2.{one = 123 two = `str`}
 
 ;; Destructure with alternative local names. ;;
 {

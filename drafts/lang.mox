@@ -98,7 +98,7 @@ Notable differences from Clojure's EDN and AST:
 - {} grudgingly requires `=` in key-values; see [#structs] below.
 
 Delimiter purposes:
-- () is for app-compile-time sequences: blocks, groups, maybe tuples.
+- () is for app-compile-time sequences: blocks, groups.
 - [] is for app-execution-time sequences.
 - {} is for dicts and structs.
 
@@ -757,7 +757,7 @@ fopen = {
   path = Str
   mode = `r`
 } -> (
-  ;; ... ;;
+  ;; ... perform a syscall ;;
 )
 
 ;; Inline modifiers and types: ;;
@@ -794,6 +794,13 @@ Person = struct.{
 
 ;; Sample construction: ;;
 person = Person.{
+  id    = 10
+  name  = `one`
+  email = `two@three.four`
+}
+
+;; Type can be inferred on either LHS or RHS of `=`: ;;
+Person : person = {
   id    = 10
   name  = `one`
   email = `two@three.four`
@@ -1013,6 +1020,25 @@ guess_name = val -> or.(
 
 ;; Infix version: ;;
 guess_name = val -> val.name | (val.slug & (`@` + val.slug)) | val.email
+
+;;
+### Struct field shorthands
+
+Because key-values are paired via `=`, we can unambiguously support
+key-only shorthands, similar to other languages:
+;;
+one = 10
+two = 20
+pair = {one two}
+
+;;
+Equivalent to the code below. Note how the syntax is completely identical
+between variable and field assignment. This eases learning and refactoring.
+;;
+pair = {
+  one = 10
+  two = 20
+}
 
 ;;
 ### Variables
@@ -2357,6 +2383,18 @@ some_int :: Int = 123
 _ :: {
   vis = `package`             ;; Visible only in current package. ;;
   pub = [Some_type some_proc] ;; Declare exports in one place. ;;
+}
+
+;; We might be able to support pragma/field grouping: ;;
+Parser = struct.{
+  pub : (
+    source   = Stream
+    comments = Bool
+  )
+  mut : (
+    position = Int
+    peek     = Buffer
+  )
 }
 
 ;;

@@ -99,6 +99,7 @@ contexts:
     - include: num-pop
     - include: sym-pop
     - include: dot-pop
+    - include: comma-pop
 
   delim-pop:
     - include: paren-pop
@@ -291,4 +292,12 @@ contexts:
   dot-pop:
     - match: '{{dot}}'
       scope: punctuation.accessor.mox
+      pop: 1
+
+  # For experimentation. We may or may not end up supporting Clojure-style
+  # "comment" commas, for cosmetic inline separation.
+  comma-pop:
+    - match: ','
+      # scope: punctuation.comma.mox comment.punctuation.comma.mox
+      scope: punctuation.comma.mox
       pop: 1
